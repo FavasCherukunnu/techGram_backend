@@ -1,9 +1,11 @@
 const express = require('express');
 const { userRegistration } = require('../controllers/user_controllers');
 const multer = require('multer')
-const modelUserRegistration = require('../models/user.registration.model');
+const modelUserRegistration = require('../models/user/user.registration.model');
 const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken')
+const jwt = require('jsonwebtoken');
+const { auth } = require('../controllers/middlewares');
+const SECRET_KEY = 'techGram123';
 
 const authenticationRouter = express.Router();
 //multer- file upload
@@ -20,8 +22,13 @@ const storage = multer.diskStorage(
 )
 const upload = multer({ storage: storage });
 
+
+
+
+
 authenticationRouter.post('/register',upload.single('image'),userRegistration);
 authenticationRouter.post('/login',async (req, res) => {
+
     const { email, password } = req.body;
 
     try {
@@ -34,8 +41,12 @@ authenticationRouter.post('/login',async (req, res) => {
             return res.status(400).json({ message: 'invalid credential' })     //400- bad request
         }
 
+        let user1 = {...user._doc}
+        delete user1.image;
+        delete user1.password;
+
         const token = jwt.sign({email:user.email,id:user._id},SECRET_KEY)
-        res.status(201).json({user:user,token:token,message:'ok'})
+        res.status(201).json({user:user1,token:token,message:'ok'})
 
     }catch (err){
         console.log(err);
@@ -43,6 +54,18 @@ authenticationRouter.post('/login',async (req, res) => {
     }
 
 
+})
+authenticationRouter.get('/getUserInfo',auth,async (req,res)=>{
+    const { userId } = req;
+    console.log(userId);
+    try{
+        let user = {...await modelUserRegistration.findById(userId)}._doc;
+        delete user.password;
+        return res.json({user:user});
+    }catch (err){
+        console.log(err);
+    }
+    
 })
 
 module.exports = authenticationRouter;

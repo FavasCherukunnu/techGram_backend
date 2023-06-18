@@ -7,7 +7,7 @@ const userRegistration = new mongoose.Schema(
         fullName: {type:String,required:true},
         address: {type:String,required:true},
         phoneNo: {type:String,required:true},
-        email: {type:String,required:true},
+        email: {type:String,required:true,unique:true},
         fatherName: {type:String,required:true},
         motherName: {type:String,required:true},
         district: {type:String,required:true},

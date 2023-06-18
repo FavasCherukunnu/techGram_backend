@@ -1,5 +1,5 @@
 const express = require('express');
-const modelUserRegistration = require('../models/user.registration.model');
+const modelUserRegistration = require('../models/user/user.registration.model');
 const fs = require('fs')
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken')
@@ -15,7 +15,7 @@ const userRegistration = async(req, res) => {
     dat.dateTimeNow = new Date();
 
     // console.log(dat);
-    // console.log(file);
+    console.log(file);
 
     dat.image = ''
     dat.password = await bcrypt.hash(dat.password,10);      //encrypting password
@@ -26,10 +26,15 @@ const userRegistration = async(req, res) => {
                 contentType: file.mimetype,
                 size:`${file.size}`
             }
-        })
+        });
+        console.log('image saved');
+
+        let user1 = {...user._doc}
+        delete user1.image;
+        delete user1.password;
 
         const token = jwt.sign({email:user.email,id:user._id},SECRET_KEY);
-        res.status(201).json({user:user,token:token,message:'ok'});         //201 created record
+        res.status(201).json({user:user1,token:token,message:'ok'});         //201 created record
 
     } catch (err) {
         console.log(err);
@@ -43,4 +48,4 @@ const userLogin = (req,res)=>{
     const {email,password} = req.body;
 }
 
-module.exports =  {userRegistration,userLogin}
+module.exports =  {userRegistration,userLogin,SECRET_KEY}

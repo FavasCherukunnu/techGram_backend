@@ -3,10 +3,13 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const multer = require('multer')
 const { userRegistration, userLogin } = require('./controllers/user_controllers.js')
-const modelUserRegistration = require('./models/user.registration.model');
+const modelUserRegistration = require('./models/user/user.registration.model.js');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const authenticationRouter = require('./router/authentication.js');
+const authenticationRouter = require('./router/user_authentication.js');
+const { auth } = require('./controllers/middlewares.js');
+const adminAuthentication = require('./router/admin_authentication.js');
+const SECRET_KEY = 'techGram123';
 
 const PORT = 3002;
 
@@ -22,7 +25,8 @@ mongoose.connect('mongodb://127.0.0.1:27017/techGram1').then(() => {
 //middlewares
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
-app.use(cors());
+app.use(cors({exposedHeaders:['x-auth-token']}));
 
-app.use('/api',authenticationRouter)
+app.use('/user', authenticationRouter)
+app.use('/admin',adminAuthentication)
 
