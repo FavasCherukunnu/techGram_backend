@@ -11,8 +11,11 @@ const userRegistration = new mongoose.Schema(
         fatherName: {type:String,required:true},
         motherName: {type:String,required:true},
         district: {type:String,required:true},
-        taluk: {type:String,required:true},
+        districtId:{type:Number,required:true},
+        block: {type:String,required:true},
+        blockId: {type:String,required:true},
         panchayath: {type:String,required:true},
+        panchayathId: {type:String,required:true},
         wardNo: {type:String,required:true},
         pinCode: {type:String,required:true},
         dob: { type:Date,required:false },
@@ -24,9 +27,9 @@ const userRegistration = new mongoose.Schema(
             contentType:String,
             size:String
         },
-        isApproved:{type:Boolean,required:true},
+        isApproved:{type:Boolean,required:false},
     },
-    {collection:'registration'}
+    {collection:'registration',timestamps:true}
 )
 
 const modelUserRegistration = mongoose.model('registration',userRegistration)

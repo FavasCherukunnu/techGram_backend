@@ -6,10 +6,13 @@ const { SECRET_KEY } = require('../controllers/user_controllers');
 const { auth, authAdmin } = require('../controllers/middlewares');
 const modelPanchayath = require('../models/panchayath_model');
 
+adminAuthentication.get('/auth',authAdmin,(req,res)=>{
+    res.status(200).json({message:'ok'})
+})
+
 adminAuthentication.post('/login', async (req, res) => {
 
     const { userName, password } = req.body;
-    console.log(req.body);
     try {
         const admin = await modelAdminRegistration.findOne(
             {
@@ -54,7 +57,6 @@ adminAuthentication.get('/listPanchayath', authAdmin, async (req, res) => {
     }
 })
 
-
 adminAuthentication.get('/searchPanchayath', authAdmin, async (req, res) => {
     let { key, district } = req.query;
     try {
@@ -75,7 +77,36 @@ adminAuthentication.get('/searchPanchayath', authAdmin, async (req, res) => {
     }
 })
 
+adminAuthentication.get('/getPanchayathById/:id', authAdmin, async (req, res) => {
+    const { id } = req.params;
+    try {
+        let panchayath = await modelPanchayath.findById(id);
+        if (!panchayath) {
+            throw Error('No such Panchayat')
+        }
+        return res.status(200).json({ message: 'ok',panchayath:panchayath})
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({message:"something went wrong"})
+    }
+})
 
+adminAuthentication.post('/updatePanchayath/:id',authAdmin,async(req,res)=>{
+    const panchayath = req.body.panchayath;
+    delete panchayath._id;
+    delete panchayath.updatedAt
+    // panchayath.updatedAt = Date.now();
+    const {id} = req.params;
+    
+    try{
+        let panchayathdb = await modelPanchayath.findByIdAndUpdate(id,panchayath,{runValidators:true,setDefaultsOnInsert:true})
+        res.status(200).json({message:'ok',panchayath:panchayathdb})
+    }catch(err){
+        console.log(err);
+        res.status(500).json({message:'something went wrong'})
+    }
+
+})
 
 
 
