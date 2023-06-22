@@ -11,6 +11,10 @@ const panchayath = new mongoose.Schema(
         panchayath: { type: String, required: true },
         panchayathId: { type: Number, required: true },
         id: { type: String, require: true, unique: true },
+        president:{
+            type:mongoose.SchemaTypes.ObjectId,
+            ref:'registration'          //user model name
+        }
         // createdAt: { type: Date, default: () => Date.now(), immutable: true },
         // updatedAt: { type: Date, require: true, default: () => Date.now() }
     },

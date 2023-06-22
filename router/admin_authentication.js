@@ -5,9 +5,10 @@ const jwt = require('jsonwebtoken');
 const { SECRET_KEY } = require('../controllers/user_controllers');
 const { auth, authAdmin } = require('../controllers/middlewares');
 const modelPanchayath = require('../models/panchayath_model');
+const modelUserRegistration = require('../models/user/user.registration.model');
 
-adminAuthentication.get('/auth',authAdmin,(req,res)=>{
-    res.status(200).json({message:'ok'})
+adminAuthentication.get('/auth', authAdmin, (req, res) => {
+    res.status(200).json({ message: 'ok' })
 })
 
 adminAuthentication.post('/login', async (req, res) => {
@@ -43,7 +44,10 @@ adminAuthentication.post('/createPanchayath', authAdmin, async (req, res) => {
         return res.status(201).json({ message: 'ok', panchayath: panchayathModel })       //created record
     } catch (err) {
         console.log(err);
-        res.status(500).json({ message: 'already registered the panchayath' })
+        if(err.code === 11000){
+            return res.status(409).json({message:'already registered. You can edit Panchayath Details'})
+        }
+        return res.status(500).json({ message: 'already registered the panchayath' })
     }
 })
 
@@ -67,8 +71,7 @@ adminAuthentication.get('/searchPanchayath', authAdmin, async (req, res) => {
                         [{ title: { "$regex": `^${key}`, "$options": "i" } },
                         { panchayath: { "$regex": `^${key}`, "$options": "i" } }]
                 }, { district: new RegExp(district) }]
-        })
-        console.log(panchayaths);
+        }).populate('president',{fullName:1})
         res.status(200).json({ message: 'ok', panchayaths: panchayaths })
     } catch (err) {
         console.log(err);
@@ -80,32 +83,48 @@ adminAuthentication.get('/searchPanchayath', authAdmin, async (req, res) => {
 adminAuthentication.get('/getPanchayathById/:id', authAdmin, async (req, res) => {
     const { id } = req.params;
     try {
-        let panchayath = await modelPanchayath.findById(id);
+        let panchayath = await modelPanchayath.findById(id).populate("president",{image:0,password:0});
+        console.log(panchayath);
         if (!panchayath) {
             throw Error('No such Panchayat')
         }
-        return res.status(200).json({ message: 'ok',panchayath:panchayath})
+        return res.status(200).json({ message: 'ok', panchayath: panchayath })
     } catch (err) {
         console.log(err);
-        return res.status(500).json({message:"something went wrong"})
+        return res.status(500).json({ message: "something went wrong" })
     }
 })
 
-adminAuthentication.post('/updatePanchayath/:id',authAdmin,async(req,res)=>{
+adminAuthentication.post('/updatePanchayath/:id', authAdmin, async (req, res) => {
     const panchayath = req.body.panchayath;
     delete panchayath._id;
     delete panchayath.updatedAt
     // panchayath.updatedAt = Date.now();
-    const {id} = req.params;
-    
-    try{
-        let panchayathdb = await modelPanchayath.findByIdAndUpdate(id,panchayath,{runValidators:true,setDefaultsOnInsert:true})
-        res.status(200).json({message:'ok',panchayath:panchayathdb})
-    }catch(err){
+    const { id } = req.params;
+
+    try {
+        let panchayathdb = await modelPanchayath.findByIdAndUpdate(id, panchayath, { runValidators: true, setDefaultsOnInsert: true })
+        res.status(200).json({ message: 'ok', panchayath: panchayathdb })
+    } catch (err) {
         console.log(err);
-        res.status(500).json({message:'something went wrong'})
+        res.status(500).json({ message: 'something went wrong' })
     }
 
+})
+
+adminAuthentication.get('/getUsersBasedOnPachayathId', authAdmin, async (req, res) => {
+    const { panchayathOId,key } = req.query;
+    try {
+
+        let userList = await modelUserRegistration.find(
+            {
+                $and:[{panchayathOId:panchayathOId},{$or:[{adharNo:new RegExp(`^${key}`)},{fullName:new RegExp(`^${key}`)}]}]
+            }, { image: 0, password: 0 }
+        )
+        res.status(200).json({ message: 'ok', users: userList })
+    } catch (err) {
+        res.status(500).json({ message: 'something went wrong' })
+    }
 })
 
 
