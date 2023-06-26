@@ -2,10 +2,10 @@
 const jwt = require('jsonwebtoken');
 const { SECRET_KEY } = require('./user_controllers');
 
+
 const auth = (req, res,next) => {
-    let token = req.header('x-auth-token');
+    let token = req.header('u-auth-token');
     // token = token.split(' ')[1]
-    console.log(token);
     if (!token) {
         return res.status(401).json({ auth:false,message: 'No token, authorization denied' });
     }
@@ -49,6 +49,9 @@ const authAdmin = (req, res,next) => {
 }
 
 
+const isApproved = (req,res)=>{
+
+}
 
 
 module.exports =  {auth,authAdmin}

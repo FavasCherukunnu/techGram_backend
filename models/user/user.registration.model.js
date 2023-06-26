@@ -24,13 +24,15 @@ const userRegistration = new mongoose.Schema(
         dob: { type:Date,required:false },
         adharNo: {type:String,required:true},
         password:{type:String,required:true},
-        dateTimeNow: { type:Date,required:true },
+        // dateTimeNow: { type:Date,required:true },
         image: {
             data:Buffer,
             contentType:String,
             size:String
         },
-        isApproved:{type:Boolean,required:false},
+        isApproved:{type:Boolean,required:false,default:false},
+        userType:{type:String,default:'user'}, //user or member 
+        isPresident:{type:Boolean,default:false}
     },
     {collection:'registration',timestamps:true}
 )
