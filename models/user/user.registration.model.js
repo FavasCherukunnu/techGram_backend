@@ -20,8 +20,9 @@ const userRegistration = new mongoose.Schema(
         panchayathId: {type:String,required:true},
         panchayathOId: {type:String,required:true},
         wardNo: {type:String,required:true},
+        wardOId:{type:String,required:true},
         pinCode: {type:String,required:true},
-        dob: { type:Date,required:false },
+        dob: { type:Date,required:true },
         adharNo: {type:String,required:true},
         password:{type:String,required:true},
         // dateTimeNow: { type:Date,required:true },
@@ -31,8 +32,10 @@ const userRegistration = new mongoose.Schema(
             size:String
         },
         isApproved:{type:Boolean,required:false,default:false},
+        isRejected:{type:Boolean,default:false},
         userType:{type:String,default:'user'}, //user or member 
-        isPresident:{type:Boolean,default:false}
+        isPresident:{type:Boolean,default:false},
+
     },
     {collection:'registration',timestamps:true}
 )

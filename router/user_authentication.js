@@ -36,11 +36,10 @@ authenticationRouter.post('/register', upload.single('image'), async (req, res) 
     var dat = JSON.parse(req.body.data1)
     const file = req.file;
     delete dat.dataTimeNow
-    dat.dob = new Date(`${dat.dob.year}-${dat.dob.month}-${dat.dob.day}T00:00:00+05:30`);
+    dat.dob = new Date(`${dat.dob.year}-${dat.dob.month}-${dat.dob.day}`);
     // dat.dateTimeNow = new Date();
 
     // console.log(dat);
-    console.log(file);
 
     dat.image = ''
     dat.password = await bcrypt.hash(dat.password, 10);      //encrypting password
@@ -83,7 +82,7 @@ authenticationRouter.post('/login', async (req, res) => {
         if (!isValid) {
             return res.status(400).json({ message: 'invalid credential' })     //400- bad request
         }
-        if (user.isApproved === false) {
+        if (user.isApproved === false && user.userType==='user') {
             return res.status(403).json({ message: 'You are not Approved. Please contact your member' })  //403 - user is known but not autherized
         }
 
@@ -106,13 +105,55 @@ authenticationRouter.get('/getUserInfo', auth, async (req, res) => {
     const { userId } = req;
     console.log(userId);
     try {
-        let user = { ...await modelUserRegistration.findById(userId) }._doc;
-        delete user.password;
-        return res.json({ user: user });
+        let user = await modelUserRegistration.findById(userId, { password: 0 });
+        // delete user.password;
+        return res.status(200).json({ message: 'ok', user: user });
     } catch (err) {
         console.log(err);
+        if (err.msg) {
+            return res.status(500).json({ message: err.msg })
+        }
+        return res.status(500).json({ message: "something went wrong" })
     }
 
+})
+
+authenticationRouter.get('/getUserById/:id', auth, async (req, res) => {
+    const id = req.params.id;
+
+    try {
+        const user = await modelUserRegistration.findById(id, { password: 0 });
+        return res.status(200).json({ message: 'ok', user: user });
+
+    } catch (err) {
+        console.log(err);
+        if (err.msg) {
+            return res.status(500).json({ message: err.msg })
+        }
+        return res.status(500).json({ message: "something went wrong" })
+    }
+})
+
+authenticationRouter.post('/approveUserById', auth, async (req, res) => {
+    const { id } = req.body;
+    try {
+        let res1 = await modelUserRegistration.findByIdAndUpdate(id, { isApproved: true, isRejected: false })
+        return res.status(200).json({ message: 'ok' });
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ message: "something went wrong" })
+    }
+})
+
+authenticationRouter.post('/rejectUserById', auth, async (req, res) => {
+    const { id } = req.body;
+    try {
+        let res1 = await modelUserRegistration.findByIdAndUpdate(id, { isApproved: false, isRejected: true })
+        return res.status(200).json({ message: 'ok' });
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ message: "something went wrong" })
+    }
 })
 
 authenticationRouter.get('/getUsersBasedOnPachayathId', auth, async (req, res) => {
@@ -249,6 +290,26 @@ authenticationRouter.post('/deleteWard', auth, async (req, res) => {
         }
         return res.status(500).json({ message: "something went wrong" })
     }
+})
+
+authenticationRouter.get('/getUsersUnApproved/:id', auth, async (req, res) => {
+    const { id } = req.params;
+    const { isRejected, isApproved } = req.query;
+    try {
+
+
+        const users = await modelUserRegistration.find({ $and:[{wardOId: id}, {$where: `/${isApproved}.*/.test(this.isApproved)`}, {$where: `/${isRejected}.*/.test(this.isRejected)`}] }, { image: 0, password: 0 });
+        return res.status(200).json({ message: 'ok', users: users, });
+
+
+    } catch (err) {
+        console.log(err);
+        if (err.msg) {
+            return res.status(500).json({ message: err.msg })
+        }
+        return res.status(500).json({ message: "something went wrong" })
+    }
+
 })
 
 module.exports = authenticationRouter;
