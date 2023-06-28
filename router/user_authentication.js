@@ -4,7 +4,7 @@ const multer = require('multer')
 const modelUserRegistration = require('../models/user/user.registration.model');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const { auth } = require('../controllers/middlewares');
+const { auth, filterUser } = require('../controllers/middlewares');
 const fs = require('fs');
 const { stringToDate } = require('../staticFiles/functions');
 const modelWard = require('../models/ward_model');
@@ -69,6 +69,55 @@ authenticationRouter.post('/register', upload.single('image'), async (req, res) 
     }
 
 });
+
+authenticationRouter.post('/editUser',upload.single('image'),auth,async(req,res)=>{
+    var dat = JSON.parse(req.body.data1)
+    const file = req.file;
+    delete dat.dataTimeNow
+    dat.dob = new Date(`${dat.dob.year}-${dat.dob.month}-${dat.dob.day}`);
+    // dat.dateTimeNow = new Date();
+    const id = dat._id;
+    console.log(dat);
+    
+    try {
+
+        const user = await modelUserRegistration.findById(id);
+
+        const isValid = await bcrypt.compare(dat.password, user.password);
+        if (!isValid) {
+            return res.status(400).json({ message: 'invalid credential' })     //400- bad request
+        }
+
+        if(dat.image!=='' && Object.keys(dat.image).length!==0){
+            delete dat.password;
+            await user.updateOne({
+                ...dat, image:{
+                    data: fs.readFileSync(`${__dirname}/../uploads/${file.fieldname}`),
+                    contentType: file.mimetype,
+                    size: `${file.size}`
+                }
+            },{runValidators:true});
+            
+        }else{
+            delete dat.image;
+            delete dat.password;
+            await user.updateOne({
+                ...dat
+            },{runValidators:true});
+        }
+        return res.status(201).json({ message: 'ok' });         //201 created record
+
+
+
+    } catch (err) {
+        console.log(err);
+        if (err.code === 11000) {
+            return res.status(409).json({ message: 'already registered' })
+        }
+        res.status(500).json({ message: 'something went wrong' })
+    }
+
+})
 authenticationRouter.post('/login', async (req, res) => {
 
     const { email, password } = req.body;
@@ -101,7 +150,7 @@ authenticationRouter.post('/login', async (req, res) => {
 })
 
 
-authenticationRouter.get('/getUserInfo', auth, async (req, res) => {
+authenticationRouter.get('/getUserInfo', auth,filterUser, async (req, res) => {
     const { userId } = req;
     console.log(userId);
     try {
@@ -118,7 +167,7 @@ authenticationRouter.get('/getUserInfo', auth, async (req, res) => {
 
 })
 
-authenticationRouter.get('/getUserById/:id', auth, async (req, res) => {
+authenticationRouter.get('/getUserById/:id', auth,filterUser, async (req, res) => {
     const id = req.params.id;
 
     try {
@@ -134,7 +183,7 @@ authenticationRouter.get('/getUserById/:id', auth, async (req, res) => {
     }
 })
 
-authenticationRouter.post('/approveUserById', auth, async (req, res) => {
+authenticationRouter.post('/approveUserById', auth,filterUser,filterUser, async (req, res) => {
     const { id } = req.body;
     try {
         let res1 = await modelUserRegistration.findByIdAndUpdate(id, { isApproved: true, isRejected: false })
@@ -145,7 +194,7 @@ authenticationRouter.post('/approveUserById', auth, async (req, res) => {
     }
 })
 
-authenticationRouter.post('/rejectUserById', auth, async (req, res) => {
+authenticationRouter.post('/rejectUserById', auth,filterUser, async (req, res) => {
     const { id } = req.body;
     try {
         let res1 = await modelUserRegistration.findByIdAndUpdate(id, { isApproved: false, isRejected: true })
@@ -156,7 +205,7 @@ authenticationRouter.post('/rejectUserById', auth, async (req, res) => {
     }
 })
 
-authenticationRouter.get('/getUsersBasedOnPachayathId', auth, async (req, res) => {
+authenticationRouter.get('/getUsersBasedOnPachayathId', auth,filterUser, async (req, res) => {
     const { panchayathOId, key } = req.query;
     try {
 
@@ -171,7 +220,7 @@ authenticationRouter.get('/getUsersBasedOnPachayathId', auth, async (req, res) =
     }
 })
 
-authenticationRouter.post('/createWard', auth, async (req, res) => {
+authenticationRouter.post('/createWard', auth,filterUser, async (req, res) => {
 
     const ward = req.body.ward;
     try {
@@ -202,7 +251,7 @@ authenticationRouter.post('/createWard', auth, async (req, res) => {
     }
 })
 
-authenticationRouter.get('/searchWard', auth, async (req, res) => {
+authenticationRouter.get('/searchWard', auth,filterUser, async (req, res) => {
 
     let { key, panchayathOId } = req.query;
     try {
@@ -223,7 +272,7 @@ authenticationRouter.get('/searchWard', auth, async (req, res) => {
     }
 })
 
-authenticationRouter.get('/getWardById/:id', auth, async (req, res) => {
+authenticationRouter.get('/getWardById/:id', auth,filterUser, async (req, res) => {
     var id = req.params.id;
     try {
         const ward = await modelWard.findById(id).populate('member', { fullName: 1, adharNo: 1, wardNo: 1 });
@@ -233,7 +282,7 @@ authenticationRouter.get('/getWardById/:id', auth, async (req, res) => {
         return res.status(500).json({ message: "something went wrong" })
     }
 })
-authenticationRouter.post('/updateWardById/:id', auth, async (req, res) => {
+authenticationRouter.post('/updateWardById/:id', auth,filterUser, async (req, res) => {
     const { id } = req.params;
     const newWard = req.body.ward;
 
@@ -270,7 +319,7 @@ authenticationRouter.post('/updateWardById/:id', auth, async (req, res) => {
 
 })
 
-authenticationRouter.post('/deleteWard', auth, async (req, res) => {
+authenticationRouter.post('/deleteWard', auth,filterUser, async (req, res) => {
     const { wardId } = req.body;
     try {
         const resmodel = await modelWard.findById(wardId);
@@ -292,7 +341,7 @@ authenticationRouter.post('/deleteWard', auth, async (req, res) => {
     }
 })
 
-authenticationRouter.get('/getUsersUnApproved/:id', auth, async (req, res) => {
+authenticationRouter.get('/getUsersUnApproved/:id', auth,filterUser, async (req, res) => {
     const { id } = req.params;
     const { isRejected, isApproved } = req.query;
     try {
