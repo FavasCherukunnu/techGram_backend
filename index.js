@@ -10,7 +10,7 @@ const authenticationRouter = require('./router/user_authentication.js');
 const { auth } = require('./controllers/middlewares.js');
 const adminAuthentication = require('./router/admin_authentication.js');
 const SECRET_KEY = 'techGram123';
-
+const path = require('path')
 const PORT = 3002;
 
 const app = express();
@@ -24,8 +24,9 @@ mongoose.connect('mongodb://127.0.0.1:27017/techGram1').then(() => {
 
 //middlewares
 app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+app.use(express.urlencoded({ extended: true }));
 app.use(cors({exposedHeaders:['x-auth-token']}));
+app.use('/uploads/profile',express.static('./uploads/profile'))
 
 app.use('/user', authenticationRouter)
 app.use('/admin',adminAuthentication)

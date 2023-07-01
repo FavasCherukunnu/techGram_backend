@@ -8,6 +8,7 @@ const { auth, filterUser } = require('../controllers/middlewares');
 const fs = require('fs');
 const { stringToDate } = require('../staticFiles/functions');
 const modelWard = require('../models/ward_model');
+const { uploadToFolder } = require('../controllers/middlewaresMulter');
 const SECRET_KEY = 'techGram123';
 
 const authenticationRouter = express.Router();
@@ -23,14 +24,41 @@ const storage = multer.diskStorage(
 
     }
 )
-const upload = multer({ storage: storage });
+const fileFilter = (req, file, cb) => {
+    const allowedFileTypes = ["image/jpeg", "image/jpg", "image/png"];
+    if (allowedFileTypes.includes(file.mimetype)) {
+        cb(null, true);
+    } else {
+        cb(null, false);
+    }
+};
 
+const upload = multer({ storage: storage, fileFilter });
 
 authenticationRouter.get('/auth', auth, async (req, res) => {
     const user = await modelUserRegistration.findById(req.userId, { image: 0, password: 0 });
     res.status(200).json({ message: 'ok', user: user })
 })
 
+
+
+authenticationRouter.post('/dev/register', (req, res) => {
+
+
+    uploadToFolder(req, res, async(err) => {
+        if (err) {
+            console.log(err);
+            if (err.code === 11000) {
+                return res.status(409).json({ message: 'already registered' })
+            }
+            return res.status(500).json({ message: 'something went wrong' })
+        }
+        
+        const user = await modelUserRegistration.findByIdAndUpdate(req.userId,{image:req.file.filename})
+        res.status(200).json({ message: 'ok' });
+    });
+
+})
 
 authenticationRouter.post('/register', upload.single('image'), async (req, res) => {
     var dat = JSON.parse(req.body.data1)
@@ -70,7 +98,7 @@ authenticationRouter.post('/register', upload.single('image'), async (req, res) 
 
 });
 
-authenticationRouter.post('/editUser',upload.single('image'),auth,async(req,res)=>{
+authenticationRouter.post('/editUser', upload.single('image'), auth, async (req, res) => {
     var dat = JSON.parse(req.body.data1)
     const file = req.file;
     delete dat.dataTimeNow
@@ -78,7 +106,7 @@ authenticationRouter.post('/editUser',upload.single('image'),auth,async(req,res)
     // dat.dateTimeNow = new Date();
     const id = dat._id;
     console.log(dat);
-    
+
     try {
 
         const user = await modelUserRegistration.findById(id);
@@ -88,22 +116,22 @@ authenticationRouter.post('/editUser',upload.single('image'),auth,async(req,res)
             return res.status(400).json({ message: 'invalid credential' })     //400- bad request
         }
 
-        if(dat.image!=='' && Object.keys(dat.image).length!==0){
+        if (dat.image !== '' && Object.keys(dat.image).length !== 0) {
             delete dat.password;
             await user.updateOne({
-                ...dat, image:{
+                ...dat, image: {
                     data: fs.readFileSync(`${__dirname}/../uploads/${file.fieldname}`),
                     contentType: file.mimetype,
                     size: `${file.size}`
                 }
-            },{runValidators:true});
-            
-        }else{
+            }, { runValidators: true });
+
+        } else {
             delete dat.image;
             delete dat.password;
             await user.updateOne({
                 ...dat
-            },{runValidators:true});
+            }, { runValidators: true });
         }
         return res.status(201).json({ message: 'ok' });         //201 created record
 
@@ -131,7 +159,7 @@ authenticationRouter.post('/login', async (req, res) => {
         if (!isValid) {
             return res.status(400).json({ message: 'invalid credential' })     //400- bad request
         }
-        if (user.isApproved === false && user.userType==='user') {
+        if (user.isApproved === false && user.userType === 'user') {
             return res.status(403).json({ message: 'You are not Approved. Please contact your member' })  //403 - user is known but not autherized
         }
 
@@ -150,11 +178,10 @@ authenticationRouter.post('/login', async (req, res) => {
 })
 
 
-authenticationRouter.get('/getUserInfo', auth,filterUser, async (req, res) => {
+authenticationRouter.get('/getUserInfo', auth, filterUser, async (req, res) => {
     const { userId } = req;
-    console.log(userId);
     try {
-        let user = await modelUserRegistration.findById(userId, { password: 0 });
+        let user = await modelUserRegistration.findById(userId, { password: 0 ,image:0});
         // delete user.password;
         return res.status(200).json({ message: 'ok', user: user });
     } catch (err) {
@@ -167,11 +194,11 @@ authenticationRouter.get('/getUserInfo', auth,filterUser, async (req, res) => {
 
 })
 
-authenticationRouter.get('/getUserById/:id', auth,filterUser, async (req, res) => {
+authenticationRouter.get('/getUserById/:id', auth, filterUser, async (req, res) => {
     const id = req.params.id;
 
     try {
-        const user = await modelUserRegistration.findById(id, { password: 0 });
+        const user = await modelUserRegistration.findById(id, { password: 0, image:0 });
         return res.status(200).json({ message: 'ok', user: user });
 
     } catch (err) {
@@ -183,7 +210,23 @@ authenticationRouter.get('/getUserById/:id', auth,filterUser, async (req, res) =
     }
 })
 
-authenticationRouter.post('/approveUserById', auth,filterUser,filterUser, async (req, res) => {
+authenticationRouter.get('/getProfileImageById/:id',auth,async (req,res)=>{
+    const {id} = req.params;
+    console.log(id);
+    try {
+        const image = await modelUserRegistration.findById(id, { image: 1 });
+        return res.status(200).json({ message: 'ok', image: image });
+
+    } catch (err) {
+        console.log(err);
+        if (err.msg) {
+            return res.status(500).json({ message: err.msg })
+        }
+        return res.status(500).json({ message: "something went wrong" })
+    }
+})
+
+authenticationRouter.post('/approveUserById', auth, filterUser, filterUser, async (req, res) => {
     const { id } = req.body;
     try {
         let res1 = await modelUserRegistration.findByIdAndUpdate(id, { isApproved: true, isRejected: false })
@@ -194,7 +237,7 @@ authenticationRouter.post('/approveUserById', auth,filterUser,filterUser, async 
     }
 })
 
-authenticationRouter.post('/rejectUserById', auth,filterUser, async (req, res) => {
+authenticationRouter.post('/rejectUserById', auth, filterUser, async (req, res) => {
     const { id } = req.body;
     try {
         let res1 = await modelUserRegistration.findByIdAndUpdate(id, { isApproved: false, isRejected: true })
@@ -205,7 +248,7 @@ authenticationRouter.post('/rejectUserById', auth,filterUser, async (req, res) =
     }
 })
 
-authenticationRouter.get('/getUsersBasedOnPachayathId', auth,filterUser, async (req, res) => {
+authenticationRouter.get('/getUsersBasedOnPachayathId', auth, filterUser, async (req, res) => {
     const { panchayathOId, key } = req.query;
     try {
 
@@ -220,7 +263,7 @@ authenticationRouter.get('/getUsersBasedOnPachayathId', auth,filterUser, async (
     }
 })
 
-authenticationRouter.post('/createWard', auth,filterUser, async (req, res) => {
+authenticationRouter.post('/createWard', auth, filterUser, async (req, res) => {
 
     const ward = req.body.ward;
     try {
@@ -251,7 +294,7 @@ authenticationRouter.post('/createWard', auth,filterUser, async (req, res) => {
     }
 })
 
-authenticationRouter.get('/searchWard', auth,filterUser, async (req, res) => {
+authenticationRouter.get('/searchWard', auth, filterUser, async (req, res) => {
 
     let { key, panchayathOId } = req.query;
     try {
@@ -272,7 +315,7 @@ authenticationRouter.get('/searchWard', auth,filterUser, async (req, res) => {
     }
 })
 
-authenticationRouter.get('/getWardById/:id', auth,filterUser, async (req, res) => {
+authenticationRouter.get('/getWardById/:id', auth, filterUser, async (req, res) => {
     var id = req.params.id;
     try {
         const ward = await modelWard.findById(id).populate('member', { fullName: 1, adharNo: 1, wardNo: 1 });
@@ -282,7 +325,7 @@ authenticationRouter.get('/getWardById/:id', auth,filterUser, async (req, res) =
         return res.status(500).json({ message: "something went wrong" })
     }
 })
-authenticationRouter.post('/updateWardById/:id', auth,filterUser, async (req, res) => {
+authenticationRouter.post('/updateWardById/:id', auth, filterUser, async (req, res) => {
     const { id } = req.params;
     const newWard = req.body.ward;
 
@@ -319,7 +362,7 @@ authenticationRouter.post('/updateWardById/:id', auth,filterUser, async (req, re
 
 })
 
-authenticationRouter.post('/deleteWard', auth,filterUser, async (req, res) => {
+authenticationRouter.post('/deleteWard', auth, filterUser, async (req, res) => {
     const { wardId } = req.body;
     try {
         const resmodel = await modelWard.findById(wardId);
@@ -341,13 +384,13 @@ authenticationRouter.post('/deleteWard', auth,filterUser, async (req, res) => {
     }
 })
 
-authenticationRouter.get('/getUsersUnApproved/:id', auth,filterUser, async (req, res) => {
+authenticationRouter.get('/getUsersUnApproved/:id', auth, filterUser, async (req, res) => {
     const { id } = req.params;
     const { isRejected, isApproved } = req.query;
     try {
 
 
-        const users = await modelUserRegistration.find({ $and:[{wardOId: id}, {$where: `/${isApproved}.*/.test(this.isApproved)`}, {$where: `/${isRejected}.*/.test(this.isRejected)`}] }, { image: 0, password: 0 });
+        const users = await modelUserRegistration.find({ $and: [{ wardOId: id }, { $where: `/${isApproved}.*/.test(this.isApproved)` }, { $where: `/${isRejected}.*/.test(this.isRejected)` }] }, { image: 0, password: 0 });
         return res.status(200).json({ message: 'ok', users: users, });
 
 
