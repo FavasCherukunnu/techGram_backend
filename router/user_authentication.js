@@ -9,6 +9,8 @@ const fs = require('fs');
 const { stringToDate } = require('../staticFiles/functions');
 const modelWard = require('../models/ward_model');
 const { uploadToFolder } = require('../controllers/middlewaresMulter');
+const modelPost = require('../models/postModel');
+const modelImage = require('../models/imageModel');
 const SECRET_KEY = 'techGram123';
 
 const authenticationRouter = express.Router();
@@ -32,8 +34,20 @@ const fileFilter = (req, file, cb) => {
         cb(null, false);
     }
 };
+const storageMultiple = multer.diskStorage(
+    {
+        destination: (req, file, cb) => {
+            cb(null, 'uploads')
+        },
+        filename: (req, file, cd) => {
+            cd(null, `${Date.now()}-${file.fieldname}`)
+        }
+
+    }
+)
 
 const upload = multer({ storage: storage, fileFilter });
+const uploadMultiple = multer({ storage: storageMultiple, fileFilter });
 
 authenticationRouter.get('/auth', auth, async (req, res) => {
     const user = await modelUserRegistration.findById(req.userId, { image: 0, password: 0 });
@@ -45,7 +59,7 @@ authenticationRouter.get('/auth', auth, async (req, res) => {
 authenticationRouter.post('/dev/register', (req, res) => {
 
 
-    uploadToFolder(req, res, async(err) => {
+    uploadToFolder(req, res, async (err) => {
         if (err) {
             console.log(err);
             if (err.code === 11000) {
@@ -53,8 +67,8 @@ authenticationRouter.post('/dev/register', (req, res) => {
             }
             return res.status(500).json({ message: 'something went wrong' })
         }
-        
-        const user = await modelUserRegistration.findByIdAndUpdate(req.userId,{image:req.file.filename})
+
+        const user = await modelUserRegistration.findByIdAndUpdate(req.userId, { image: req.file.filename })
         res.status(200).json({ message: 'ok' });
     });
 
@@ -181,7 +195,7 @@ authenticationRouter.post('/login', async (req, res) => {
 authenticationRouter.get('/getUserInfo', auth, filterUser, async (req, res) => {
     const { userId } = req;
     try {
-        let user = await modelUserRegistration.findById(userId, { password: 0 ,image:0});
+        let user = await modelUserRegistration.findById(userId, { password: 0, image: 0 });
         // delete user.password;
         return res.status(200).json({ message: 'ok', user: user });
     } catch (err) {
@@ -198,7 +212,7 @@ authenticationRouter.get('/getUserById/:id', auth, filterUser, async (req, res) 
     const id = req.params.id;
 
     try {
-        const user = await modelUserRegistration.findById(id, { password: 0, image:0 });
+        const user = await modelUserRegistration.findById(id, { password: 0, image: 0 });
         return res.status(200).json({ message: 'ok', user: user });
 
     } catch (err) {
@@ -210,8 +224,8 @@ authenticationRouter.get('/getUserById/:id', auth, filterUser, async (req, res) 
     }
 })
 
-authenticationRouter.get('/getProfileImageById/:id',auth,async (req,res)=>{
-    const {id} = req.params;
+authenticationRouter.get('/getProfileImageById/:id', auth, async (req, res) => {
+    const { id } = req.params;
     console.log(id);
     try {
         const image = await modelUserRegistration.findById(id, { image: 1 });
@@ -404,4 +418,53 @@ authenticationRouter.get('/getUsersUnApproved/:id', auth, filterUser, async (req
 
 })
 
+authenticationRouter.post('/wardInfoPost', auth, uploadMultiple.array('images'), async (req, res) => {
+    let images = req.files;
+    let { description, owner, wardOId, panchayathOId } = req.body;
+    try {
+        const post = await modelPost.create({
+            description: description,
+            owner: owner,
+            wardOId: wardOId,
+            panchayathOId: panchayathOId
+        })
+
+        images.forEach(
+            async (image, index) => {
+                
+            }
+        )
+        for(let i=0;i<images.length;i++){
+            const img = await modelImage.create({
+                data: fs.readFileSync(`${__dirname}/../uploads/${images[i].filename}`),
+                contentType: images[i].mimetype,
+                size: images[i].size,
+            })
+            post.images.push(img._id);
+        }
+        await post.save();
+        return res.status(200).json({ message: 'ok' })
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ message: "something went wrong" })
+    }
+
+})
+
+authenticationRouter.get('/getPostsByWard/:id',auth,async(req,res)=>{
+    const {id} = req.params;
+    try{
+        if(id==='undefined'){
+            throw new Error('id is not defined')
+        }
+        const post= await modelPost.find({wardOId:id}).populate('owner',{fullName:1});
+        return res.status(200).json({message:'ok',posts:post})
+
+    }catch(err){
+        console.log(err);
+        return res.status(500).json({ message: "something went wrong" })
+    }
+
+
+})
 module.exports = authenticationRouter;
