@@ -4,6 +4,7 @@ const multer = require('multer')
 const modelUserRegistration = require('../models/user/user.registration.model');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const { compress } = require('compress-images/promise');
 const { auth, filterUser } = require('../controllers/middlewares');
 const fs = require('fs');
 const { stringToDate } = require('../staticFiles/functions');
@@ -11,6 +12,7 @@ const modelWard = require('../models/ward_model');
 const { uploadToFolder } = require('../controllers/middlewaresMulter');
 const modelPost = require('../models/postModel');
 const modelImage = require('../models/imageModel');
+const sharp = require('sharp');
 const SECRET_KEY = 'techGram123';
 
 const authenticationRouter = express.Router();
@@ -40,7 +42,8 @@ const storageMultiple = multer.diskStorage(
             cb(null, 'uploads')
         },
         filename: (req, file, cd) => {
-            cd(null, `${Date.now()}-${file.fieldname}`)
+            const extension = file.mimetype.substring(file.mimetype.indexOf('/') + 1)
+            cd(null, `${Date.now()}-${file.fieldname}.${extension}`)
         }
 
     }
@@ -173,7 +176,7 @@ authenticationRouter.post('/login', async (req, res) => {
         if (!isValid) {
             return res.status(400).json({ message: 'invalid credential' })     //400- bad request
         }
-        if (user.isApproved === false && user.userType === 'user') {
+        if (user.isApproved === false && user.userType === 'user' && user.isPresident===false) {
             return res.status(403).json({ message: 'You are not Approved. Please contact your member' })  //403 - user is known but not autherized
         }
 
@@ -240,7 +243,41 @@ authenticationRouter.get('/getProfileImageById/:id', auth, async (req, res) => {
     }
 })
 
-authenticationRouter.post('/approveUserById', auth, filterUser, filterUser, async (req, res) => {
+authenticationRouter.get('/getImageById/:id', auth, async (req, res) => {
+    const { id } = req.params;
+    console.log(id);
+    try {
+        const image = await modelImage.findById(id);
+        return res.status(200).json({ message: 'ok', image: image });
+
+    } catch (err) {
+        console.log(err);
+        if (err.msg) {
+            return res.status(500).json({ message: err.msg })
+        }
+        return res.status(500).json({ message: "something went wrong" })
+    }
+})
+
+authenticationRouter.get('/getCompressedImageById/:id', auth, async (req, res) => {
+    const { id } = req.params;
+    console.log(id);
+    try {
+        const image = await modelImage.findById(id,{data:0});
+
+        
+        return res.status(200).json({ message: 'ok', image: image});
+
+    } catch (err) {
+        console.log(err);
+        if (err.msg) {
+            return res.status(500).json({ message: err.msg })
+        }
+        return res.status(500).json({ message: "something went wrong" })
+    }
+})
+
+authenticationRouter.post('/approveUserById', auth, filterUser, async (req, res) => {
     const { id } = req.body;
     try {
         let res1 = await modelUserRegistration.findByIdAndUpdate(id, { isApproved: true, isRejected: false })
@@ -429,20 +466,32 @@ authenticationRouter.post('/wardInfoPost', auth, uploadMultiple.array('images'),
             panchayathOId: panchayathOId
         })
 
-        images.forEach(
-            async (image, index) => {
-                
-            }
-        )
-        for(let i=0;i<images.length;i++){
+        for (let i = 0; i < images.length; i++) {
+            const imgPath = `${__dirname}/../uploads/${images[i].filename}`;
+            const imgCompressFolder = `${__dirname}/../uploads/compressed/`
+            const imgCompressedPath = `${imgCompressFolder}${images[i].filename}`
+            //compressing image
+            await compress({
+                source: imgPath,
+                destination: imgCompressFolder,
+                enginesSetup: {
+                    jpg: { engine: 'mozjpeg', command: ['-quality', '20']},
+                    png: { engine: 'pngquant', command: ['--quality=20-50', '-o']},
+                }
+            });
+            //resize
+            fs.writeFileSync(imgCompressedPath,await sharp(imgCompressedPath).resize({width:300}).toBuffer())
+            //saveToDb
             const img = await modelImage.create({
-                data: fs.readFileSync(`${__dirname}/../uploads/${images[i].filename}`),
+                data: fs.readFileSync(imgPath),
+                compressedData: fs.readFileSync(imgCompressedPath),
                 contentType: images[i].mimetype,
                 size: images[i].size,
             })
             post.images.push(img._id);
+            await post.save();
+
         }
-        await post.save();
         return res.status(200).json({ message: 'ok' })
     } catch (err) {
         console.log(err);
@@ -451,16 +500,16 @@ authenticationRouter.post('/wardInfoPost', auth, uploadMultiple.array('images'),
 
 })
 
-authenticationRouter.get('/getPostsByWard/:id',auth,async(req,res)=>{
-    const {id} = req.params;
-    try{
-        if(id==='undefined'){
+authenticationRouter.get('/getPostsByWard/:id', auth, async (req, res) => {
+    const { id } = req.params;
+    try {
+        if (id === 'undefined') {
             throw new Error('id is not defined')
         }
-        const post= await modelPost.find({wardOId:id}).populate('owner',{fullName:1});
-        return res.status(200).json({message:'ok',posts:post})
+        const post = await modelPost.find({ wardOId: id }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
+        return res.status(200).json({ message: 'ok', posts: post })
 
-    }catch(err){
+    } catch (err) {
         console.log(err);
         return res.status(500).json({ message: "something went wrong" })
     }

@@ -39,7 +39,7 @@ adminAuthentication.post('/createPanchayath', authAdmin, async (req, res) => {
     try {
 
         //check wether the president is in panchyath or not
-        if (panchayath.president !== null || panchayath.president !== undefined) {
+        if (panchayath.president !== null && panchayath.president !== undefined) {
             const user = await modelUserRegistration.findById(panchayath.president, { panchayathOId: 1 })
             console.log(user);
             if (user.panchayathOId !== panchayath.id) {
@@ -137,7 +137,7 @@ adminAuthentication.post('/updatePanchayath/:id', authAdmin, async (req, res) =>
             let oldPresidentdb = await modelUserRegistration.findById(panchayathdatabase.president)
 
             if (panchayathdatabase.president.toString() !== panchayath.president) {
-                await oldPresidentdb.updateOne({ isPresident: false, userType: 'user' })
+                await oldPresidentdb.updateOne({ isPresident: false})
                 console.log('changed president');
 
             } else {
@@ -145,7 +145,7 @@ adminAuthentication.post('/updatePanchayath/:id', authAdmin, async (req, res) =>
             }
         }
         if (panchayath.president !== null && panchayath.president !== undefined) {
-            let newPresidentdb = await modelUserRegistration.findByIdAndUpdate(panchayath.president, { isPresident: true, isApproved: true })
+            let newPresidentdb = await modelUserRegistration.findByIdAndUpdate(panchayath.president, { isPresident: true})
         }
         // let panchayathdb = await modelPanchayath.findByIdAndUpdate(id, panchayath, { runValidators: true})
         await panchayathdatabase.updateOne(panchayath, { runValidators: true })

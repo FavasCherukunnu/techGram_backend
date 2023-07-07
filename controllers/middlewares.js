@@ -30,7 +30,7 @@ const filterUser = async(req,res,next)=>{
     try{
         const user = await modelUserRegistration.findById(req.userId);
         if(user.isApproved===false && user.userType==='user' &&user.isPresident===false){
-            return res.status(403).json({ message: 'You are not Approved. Please contact your member' })  //403 - user is known but not autherized
+            return res.status(403).json({ message: 'Yooou are not Approved. Please contact your member' })  //403 - user is known but not autherized
         }else{
             next();
         }

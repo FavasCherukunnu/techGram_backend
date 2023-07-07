@@ -5,6 +5,7 @@ const image = new mongoose.Schema(
     {
 
         data: {type:Buffer,require:true},
+        compressedData:{type:Buffer,require:true},
         contentType: {type:String,require:true},
         size: {type:String,require:true},
     },
