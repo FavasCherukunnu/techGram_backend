@@ -13,6 +13,7 @@ const { uploadToFolder } = require('../controllers/middlewaresMulter');
 const modelPost = require('../models/postModel');
 const modelImage = require('../models/imageModel');
 const sharp = require('sharp');
+const modelWardProject = require('../models/ward_projectModel');
 const SECRET_KEY = 'techGram123';
 
 const authenticationRouter = express.Router();
@@ -176,7 +177,7 @@ authenticationRouter.post('/login', async (req, res) => {
         if (!isValid) {
             return res.status(400).json({ message: 'invalid credential' })     //400- bad request
         }
-        if (user.isApproved === false && user.userType === 'user' && user.isPresident===false) {
+        if (user.isApproved === false && user.userType === 'user' && user.isPresident === false) {
             return res.status(403).json({ message: 'You are not Approved. Please contact your member' })  //403 - user is known but not autherized
         }
 
@@ -263,10 +264,10 @@ authenticationRouter.get('/getCompressedImageById/:id', auth, async (req, res) =
     const { id } = req.params;
     console.log(id);
     try {
-        const image = await modelImage.findById(id,{data:0});
+        const image = await modelImage.findById(id, { data: 0 });
 
-        
-        return res.status(200).json({ message: 'ok', image: image});
+
+        return res.status(200).json({ message: 'ok', image: image });
 
     } catch (err) {
         console.log(err);
@@ -368,6 +369,7 @@ authenticationRouter.get('/searchWard', auth, filterUser, async (req, res) => {
 
 authenticationRouter.get('/getWardById/:id', auth, filterUser, async (req, res) => {
     var id = req.params.id;
+    console.log(id);
     try {
         const ward = await modelWard.findById(id).populate('member', { fullName: 1, adharNo: 1, wardNo: 1 });
         return res.status(200).json({ message: 'ok', ward: ward })
@@ -376,6 +378,19 @@ authenticationRouter.get('/getWardById/:id', auth, filterUser, async (req, res) 
         return res.status(500).json({ message: "something went wrong" })
     }
 })
+
+authenticationRouter.get('/getWardBywardOId/:id', auth, filterUser, async (req, res) => {
+    var id = req.params.id;
+    console.log(id);
+    try {
+        const ward = await modelWard.findOne({ id: id }).populate('member', { fullName: 1, adharNo: 1, wardNo: 1 });
+        return res.status(200).json({ message: 'ok', ward: ward })
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ message: "something went wrong" })
+    }
+})
+
 authenticationRouter.post('/updateWardById/:id', auth, filterUser, async (req, res) => {
     const { id } = req.params;
     const newWard = req.body.ward;
@@ -475,12 +490,12 @@ authenticationRouter.post('/wardInfoPost', auth, uploadMultiple.array('images'),
                 source: imgPath,
                 destination: imgCompressFolder,
                 enginesSetup: {
-                    jpg: { engine: 'mozjpeg', command: ['-quality', '20']},
-                    png: { engine: 'pngquant', command: ['--quality=20-50', '-o']},
+                    jpg: { engine: 'mozjpeg', command: ['-quality', '20'] },
+                    png: { engine: 'pngquant', command: ['--quality=20-50', '-o'] },
                 }
             });
             //resize
-            fs.writeFileSync(imgCompressedPath,await sharp(imgCompressedPath).resize({width:300}).toBuffer())
+            fs.writeFileSync(imgCompressedPath, await sharp(imgCompressedPath).resize({ width: 300 }).toBuffer())
             //saveToDb
             const img = await modelImage.create({
                 data: fs.readFileSync(imgPath),
@@ -498,6 +513,66 @@ authenticationRouter.post('/wardInfoPost', auth, uploadMultiple.array('images'),
         return res.status(500).json({ message: "something went wrong" })
     }
 
+})
+
+authenticationRouter.post('/addWardProject', auth, filterUser, uploadMultiple.array('images'), async (req, res) => {
+    let images = req.files;
+    let data = req.body;
+    console.log(data);
+    try {
+
+        let endDate;
+        try{
+            endDate = endDate!==''?new Date(data.endDate):null
+        }catch(err){
+            const err1 = new Error('date is not in format');
+            err1.msg = 'date is not valid';
+            throw err1
+        }
+
+        
+
+        const project = await modelWardProject.create({
+            ...data,
+            startDate:new Date(data.startDate),
+            endDate:endDate,
+            images:[],
+        })
+
+        for (let i = 0; i < images.length; i++) {
+            const imgPath = `${__dirname}/../uploads/${images[i].filename}`;
+            const imgCompressFolder = `${__dirname}/../uploads/compressed/`
+            const imgCompressedPath = `${imgCompressFolder}${images[i].filename}`
+            //compressing image
+            await compress({
+                source: imgPath,
+                destination: imgCompressFolder,
+                enginesSetup: {
+                    jpg: { engine: 'mozjpeg', command: ['-quality', '20'] },
+                    png: { engine: 'pngquant', command: ['--quality=20-50', '-o'] },
+                }
+            });
+            //resize
+            fs.writeFileSync(imgCompressedPath, await sharp(imgCompressedPath).resize({ width: 300 }).toBuffer())
+            //saveToDb
+            const img = await modelImage.create({
+                data: fs.readFileSync(imgPath),
+                compressedData: fs.readFileSync(imgCompressedPath),
+                contentType: images[i].mimetype,
+                size: images[i].size,
+            })
+            project.images.push(img._id);
+            await project.save();
+
+        }
+        return res.status(200).json({ message: 'ok' })
+    } catch (err) {
+        console.log(err);
+        if (err.msg) {
+            return res.status(500).json({ message: err.msg })
+        }
+        return res.status(500).json({ message: "something went wrong" })
+    }
 })
 
 authenticationRouter.get('/getPostsByWard/:id', auth, async (req, res) => {
