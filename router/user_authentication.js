@@ -24,13 +24,20 @@ const storage = multer.diskStorage(
             cb(null, 'uploads')
         },
         filename: (req, file, cd) => {
-            cd(null, file.fieldname)
+            const allowedFileTypes = ["image/jpeg", "image/jpg", "image/png"];
+            if (allowedFileTypes.includes(file.mimetype)) {
+                cd(null, file.fieldname);
+            } else {
+                let err1 = new Error('err')
+                err1.msg = `unSupported format ${file.mimetype}`
+                cb(err1);
+            }
         }
 
     }
 )
 const fileFilter = (req, file, cb) => {
-    const allowedFileTypes = ["image/jpeg", "image/jpg", "image/png"];
+    const allowedFileTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
     if (allowedFileTypes.includes(file.mimetype)) {
         cb(null, true);
     } else {
@@ -42,17 +49,25 @@ const storageMultiple = multer.diskStorage(
         destination: (req, file, cb) => {
             cb(null, 'uploads')
         },
-        filename: (req, file, cd) => {
-            const extension = file.mimetype.substring(file.mimetype.indexOf('/') + 1)
-            cd(null, `${Date.now()}-${file.fieldname}.${extension}`)
+        filename: (req, file, cb) => {
+
+            const allowedFileTypes = ["image/jpeg", "image/jpg", "image/png"];
+            if (allowedFileTypes.includes(file.mimetype)) {
+                const extension = file.mimetype.substring(file.mimetype.indexOf('/') + 1)
+                cb(null, `${Date.now()}-${file.fieldname}.${extension}`)
+            } else {
+                let err1 = new Error('err')
+                err1.msg = `unSupported format ${file.mimetype}`
+                cb(err1);
+            }
         }
 
     }
 )
 
-const upload = multer({ storage: storage, fileFilter });
-const uploadMultiple = multer({ storage: storageMultiple, fileFilter });
-
+const upload = multer({ storage: storage });
+const uploadMultiple1 = multer({ storage: storageMultiple });
+const uploadMultiple = uploadMultiple1.array('images');
 authenticationRouter.get('/auth', auth, async (req, res) => {
     const user = await modelUserRegistration.findById(req.userId, { image: 0, password: 0 });
     res.status(200).json({ message: 'ok', user: user })
@@ -470,109 +485,128 @@ authenticationRouter.get('/getUsersUnApproved/:id', auth, filterUser, async (req
 
 })
 
-authenticationRouter.post('/wardInfoPost', auth, uploadMultiple.array('images'), async (req, res) => {
-    let images = req.files;
-    let { description, owner, wardOId, panchayathOId } = req.body;
-    try {
-        const post = await modelPost.create({
-            description: description,
-            owner: owner,
-            wardOId: wardOId,
-            panchayathOId: panchayathOId
-        })
+authenticationRouter.post('/wardInfoPost', auth, async (req, res) => {
+    
+    uploadMultiple(req,res,async(err)=>{
 
-        for (let i = 0; i < images.length; i++) {
-            const imgPath = `${__dirname}/../uploads/${images[i].filename}`;
-            const imgCompressFolder = `${__dirname}/../uploads/compressed/`
-            const imgCompressedPath = `${imgCompressFolder}${images[i].filename}`
-            //compressing image
-            await compress({
-                source: imgPath,
-                destination: imgCompressFolder,
-                enginesSetup: {
-                    jpg: { engine: 'mozjpeg', command: ['-quality', '20'] },
-                    png: { engine: 'pngquant', command: ['--quality=20-50', '-o'] },
-                }
-            });
-            //resize
-            fs.writeFileSync(imgCompressedPath, await sharp(imgCompressedPath).resize({ width: 300 }).toBuffer())
-            //saveToDb
-            const img = await modelImage.create({
-                data: fs.readFileSync(imgPath),
-                compressedData: fs.readFileSync(imgCompressedPath),
-                contentType: images[i].mimetype,
-                size: images[i].size,
+        try {
+            if(err){
+                throw err;
+            }
+            let images = req.files;
+            let { description, owner, wardOId, panchayathOId } = req.body;
+            const post = await modelPost.create({
+                description: description,
+                owner: owner,
+                wardOId: wardOId,
+                panchayathOId: panchayathOId
             })
-            post.images.push(img._id);
-            await post.save();
-
+    
+            for (let i = 0; i < images.length; i++) {
+                const imgPath = `${__dirname}/../uploads/${images[i].filename}`;
+                const imgCompressFolder = `${__dirname}/../uploads/compressed/`
+                const imgCompressedPath = `${imgCompressFolder}${images[i].filename}`
+                //compressing image
+                await compress({
+                    source: imgPath,
+                    destination: imgCompressFolder,
+                    enginesSetup: {
+                        jpg: { engine: 'mozjpeg', command: ['-quality', '20'] },
+                        png: { engine: 'pngquant', command: ['--quality=20-50', '-o'] },
+                    }
+                });
+                //resize
+                fs.writeFileSync(imgCompressedPath, await sharp(imgCompressedPath).resize({ width: 300 }).toBuffer())
+                //saveToDb
+                const img = await modelImage.create({
+                    data: fs.readFileSync(imgPath),
+                    compressedData: fs.readFileSync(imgCompressedPath),
+                    contentType: images[i].mimetype,
+                    size: images[i].size,
+                })
+                post.images.push(img._id);
+                await post.save();
+    
+            }
+            return res.status(200).json({ message: 'ok' })
+        } catch (err) {
+            console.log(err);
+            if (err.msg) {
+                return res.status(500).json({ message: err.msg })
+            }
+            return res.status(500).json({ message: "something went wrong" })
         }
-        return res.status(200).json({ message: 'ok' })
-    } catch (err) {
-        console.log(err);
-        return res.status(500).json({ message: "something went wrong" })
-    }
+    })
+
 
 })
 
-authenticationRouter.post('/addWardProject', auth, filterUser, uploadMultiple.array('images'), async (req, res) => {
-    let images = req.files;
-    let data = req.body;
-    console.log(data);
-    try {
-
-        let endDate;
-        try{
-            endDate = endDate!==''?new Date(data.endDate):null
-        }catch(err){
-            const err1 = new Error('date is not in format');
-            err1.msg = 'date is not valid';
-            throw err1
-        }
-
+authenticationRouter.post('/addWardProject', auth, filterUser, async (req, res) => {
+    uploadMultiple(req, res, async(err) => {
         
-
-        const project = await modelWardProject.create({
-            ...data,
-            startDate:new Date(data.startDate),
-            endDate:endDate,
-            images:[],
-        })
-
-        for (let i = 0; i < images.length; i++) {
-            const imgPath = `${__dirname}/../uploads/${images[i].filename}`;
-            const imgCompressFolder = `${__dirname}/../uploads/compressed/`
-            const imgCompressedPath = `${imgCompressFolder}${images[i].filename}`
-            //compressing image
-            await compress({
-                source: imgPath,
-                destination: imgCompressFolder,
-                enginesSetup: {
-                    jpg: { engine: 'mozjpeg', command: ['-quality', '20'] },
-                    png: { engine: 'pngquant', command: ['--quality=20-50', '-o'] },
-                }
-            });
-            //resize
-            fs.writeFileSync(imgCompressedPath, await sharp(imgCompressedPath).resize({ width: 300 }).toBuffer())
-            //saveToDb
-            const img = await modelImage.create({
-                data: fs.readFileSync(imgPath),
-                compressedData: fs.readFileSync(imgCompressedPath),
-                contentType: images[i].mimetype,
-                size: images[i].size,
+        try {
+            
+            if (err) {
+                throw err;
+            }
+            
+    
+            let images = req.files;
+            let data = req.body;
+            let endDate;
+            let startDate;
+            console.log(data);
+            endDate = data.endDate !== '' ? new Date(data.endDate) : null
+            startDate = new Date(data.startDate);
+            if (startDate.toString() === 'Invalid Date' || (endDate?.toString() === 'Invalid Date')) {
+                const err1 = new Error('date is not in format');
+                err1.msg = 'date is not valid';
+                throw err1;
+            }
+    
+            const project = await modelWardProject.create({
+                ...data,
+                startDate: startDate,
+                endDate: endDate,
+                images: [],
             })
-            project.images.push(img._id);
-            await project.save();
+    
+            for (let i = 0; i < images.length; i++) {
+                const imgPath = `${__dirname}/../uploads/${images[i].filename}`;
+                const imgCompressFolder = `${__dirname}/../uploads/compressed/`
+                const imgCompressedPath = `${imgCompressFolder}${images[i].filename}`
+                //compressing image
+                await compress({
+                    source: imgPath,
+                    destination: imgCompressFolder,
+                    enginesSetup: {
+                        jpg: { engine: 'mozjpeg', command: ['-quality', '20'] },
+                        png: { engine: 'pngquant', command: ['--quality=20-50', '-o'] },
+                    }
+                });
+                //resize
+                fs.writeFileSync(imgCompressedPath, await sharp(imgCompressedPath).resize({ width: 300 }).toBuffer())
+                //saveToDb
+                const img = await modelImage.create({
+                    data: fs.readFileSync(imgPath),
+                    compressedData: fs.readFileSync(imgCompressedPath),
+                    contentType: images[i].mimetype,
+                    size: images[i].size,
+                })
+                project.images.push(img._id);
+                await project.save();
+    
+            }
+            return res.status(200).json({ message: 'ok' })
+        } catch (err) {
+            console.log(err);
+            if (err.msg) {
+                return res.status(500).json({ message: err.msg })
+            }
+            return res.status(500).json({ message: "something went wrong" })
+        }
 
-        }
-        return res.status(200).json({ message: 'ok' })
-    } catch (err) {
-        console.log(err);
-        if (err.msg) {
-            return res.status(500).json({ message: err.msg })
-        }
-        return res.status(500).json({ message: "something went wrong" })
-    }
+    });
 })
 
 authenticationRouter.get('/getPostsByWard/:id', auth, async (req, res) => {
@@ -591,4 +625,23 @@ authenticationRouter.get('/getPostsByWard/:id', auth, async (req, res) => {
 
 
 })
+
+
+authenticationRouter.get('/getProjectByWard/:id', auth,filterUser, async (req, res) => {
+    const { id } = req.params;
+    try {
+        if (id === 'undefined') {
+            throw new Error('id is not defined')
+        }
+        const projects = await modelWardProject.find({ wardOId: id }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
+        return res.status(200).json({ message: 'ok', projects: projects })
+
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ message: "something went wrong" })
+    }
+
+
+})
+
 module.exports = authenticationRouter;
