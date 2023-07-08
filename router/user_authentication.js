@@ -14,6 +14,7 @@ const modelPost = require('../models/postModel');
 const modelImage = require('../models/imageModel');
 const sharp = require('sharp');
 const modelWardProject = require('../models/ward_projectModel');
+const modelwardAnnoucement = require('../models/ward_announcementModel');
 const SECRET_KEY = 'techGram123';
 
 const authenticationRouter = express.Router();
@@ -486,11 +487,11 @@ authenticationRouter.get('/getUsersUnApproved/:id', auth, filterUser, async (req
 })
 
 authenticationRouter.post('/wardInfoPost', auth, async (req, res) => {
-    
-    uploadMultiple(req,res,async(err)=>{
+
+    uploadMultiple(req, res, async (err) => {
 
         try {
-            if(err){
+            if (err) {
                 throw err;
             }
             let images = req.files;
@@ -501,7 +502,7 @@ authenticationRouter.post('/wardInfoPost', auth, async (req, res) => {
                 wardOId: wardOId,
                 panchayathOId: panchayathOId
             })
-    
+
             for (let i = 0; i < images.length; i++) {
                 const imgPath = `${__dirname}/../uploads/${images[i].filename}`;
                 const imgCompressFolder = `${__dirname}/../uploads/compressed/`
@@ -526,7 +527,7 @@ authenticationRouter.post('/wardInfoPost', auth, async (req, res) => {
                 })
                 post.images.push(img._id);
                 await post.save();
-    
+
             }
             return res.status(200).json({ message: 'ok' })
         } catch (err) {
@@ -542,20 +543,20 @@ authenticationRouter.post('/wardInfoPost', auth, async (req, res) => {
 })
 
 authenticationRouter.post('/addWardProject', auth, filterUser, async (req, res) => {
-    uploadMultiple(req, res, async(err) => {
-        
+    uploadMultiple(req, res, async (err) => {
+
         try {
-            
+
             if (err) {
                 throw err;
             }
-            
-    
+
+
             let images = req.files;
             let data = req.body;
             let endDate;
             let startDate;
-            console.log(data);
+            // console.log(data);
             endDate = data.endDate !== '' ? new Date(data.endDate) : null
             startDate = new Date(data.startDate);
             if (startDate.toString() === 'Invalid Date' || (endDate?.toString() === 'Invalid Date')) {
@@ -563,14 +564,14 @@ authenticationRouter.post('/addWardProject', auth, filterUser, async (req, res) 
                 err1.msg = 'date is not valid';
                 throw err1;
             }
-    
+
             const project = await modelWardProject.create({
                 ...data,
                 startDate: startDate,
                 endDate: endDate,
                 images: [],
             })
-    
+
             for (let i = 0; i < images.length; i++) {
                 const imgPath = `${__dirname}/../uploads/${images[i].filename}`;
                 const imgCompressFolder = `${__dirname}/../uploads/compressed/`
@@ -595,7 +596,64 @@ authenticationRouter.post('/addWardProject', auth, filterUser, async (req, res) 
                 })
                 project.images.push(img._id);
                 await project.save();
-    
+
+            }
+            return res.status(200).json({ message: 'ok' })
+        } catch (err) {
+            console.log(err);
+            if (err.msg) {
+                return res.status(500).json({ message: err.msg })
+            }
+            return res.status(500).json({ message: "something went wrong" })
+        }
+
+    });
+})
+
+authenticationRouter.post('/addWardAnnouncement', auth, filterUser, async (req, res) => {
+    uploadMultiple(req, res, async (err) => {
+
+        try {
+
+            if (err) {
+                throw err;
+            }
+
+
+            let images = req.files;
+            let data = req.body;
+            console.log(data);
+
+            const project = await modelwardAnnoucement.create({
+                ...data,
+                images: [],
+            })
+
+            for (let i = 0; i < images.length; i++) {
+                const imgPath = `${__dirname}/../uploads/${images[i].filename}`;
+                const imgCompressFolder = `${__dirname}/../uploads/compressed/`
+                const imgCompressedPath = `${imgCompressFolder}${images[i].filename}`
+                //compressing image
+                await compress({
+                    source: imgPath,
+                    destination: imgCompressFolder,
+                    enginesSetup: {
+                        jpg: { engine: 'mozjpeg', command: ['-quality', '20'] },
+                        png: { engine: 'pngquant', command: ['--quality=20-50', '-o'] },
+                    }
+                });
+                //resize
+                fs.writeFileSync(imgCompressedPath, await sharp(imgCompressedPath).resize({ width: 300 }).toBuffer())
+                //saveToDb
+                const img = await modelImage.create({
+                    data: fs.readFileSync(imgPath),
+                    compressedData: fs.readFileSync(imgCompressedPath),
+                    contentType: images[i].mimetype,
+                    size: images[i].size,
+                })
+                project.images.push(img._id);
+                await project.save();
+
             }
             return res.status(200).json({ message: 'ok' })
         } catch (err) {
@@ -627,7 +685,7 @@ authenticationRouter.get('/getPostsByWard/:id', auth, async (req, res) => {
 })
 
 
-authenticationRouter.get('/getProjectByWard/:id', auth,filterUser, async (req, res) => {
+authenticationRouter.get('/getProjectByWard/:id', auth, filterUser, async (req, res) => {
     const { id } = req.params;
     try {
         if (id === 'undefined') {
@@ -635,6 +693,22 @@ authenticationRouter.get('/getProjectByWard/:id', auth,filterUser, async (req, r
         }
         const projects = await modelWardProject.find({ wardOId: id }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
         return res.status(200).json({ message: 'ok', projects: projects })
+
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ message: "something went wrong" })
+    }
+
+
+})
+authenticationRouter.get('/getAnnouncementsByWard/:id', auth, filterUser, async (req, res) => {
+    const { id } = req.params;
+    try {
+        if (id === 'undefined') {
+            throw new Error('id is not defined')
+        }
+        const announcements = await modelwardAnnoucement.find({ wardOId: id }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
+        return res.status(200).json({ message: 'ok', announcements: announcements })
 
     } catch (err) {
         console.log(err);
