@@ -17,6 +17,7 @@ const modelWardProject = require('../models/ward_projectModel');
 const modelwardAnnoucement = require('../models/ward_announcementModel');
 const modelwardGramSabha = require('../models/ward_GramSasbhaModel');
 const modelwardInstitutes = require('../models/ward_Institute');
+const modelPanchayath = require('../models/panchayath_model');
 const SECRET_KEY = 'techGram123';
 
 const authenticationRouter = express.Router();
@@ -407,6 +408,20 @@ authenticationRouter.get('/getWardBywardOId/:id', auth, filterUser, async (req, 
         console.log(err);
         return res.status(500).json({ message: "something went wrong" })
     }
+});
+
+authenticationRouter.get('/getPanchayathByPanchayathOId/:id', auth, async (req, res) => {
+    const { id } = req.params;
+    try {
+        let panchayath = await modelPanchayath.findOne({ id: id }).populate("president", { image: 0, password: 0 });
+        if (!panchayath) {
+            throw Error('No such Panchayat')
+        }
+        return res.status(200).json({ message: 'ok', panchayath: panchayath })
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ message: "something went wrong" })
+    }
 })
 
 authenticationRouter.post('/updateWardById/:id', auth, filterUser, async (req, res) => {
@@ -614,7 +629,7 @@ authenticationRouter.post('/addWardProject', auth, filterUser, async (req, res) 
             let data = req.body;
             let endDate;
             let startDate;
-            // console.log(data);
+            console.log(data);
             endDate = data.endDate !== '' ? new Date(data.endDate) : null
             startDate = new Date(data.startDate);
             if (startDate.toString() === 'Invalid Date' || (endDate?.toString() === 'Invalid Date')) {
@@ -669,6 +684,63 @@ authenticationRouter.post('/addWardProject', auth, filterUser, async (req, res) 
 })
 
 authenticationRouter.post('/addWardAnnouncement', auth, filterUser, async (req, res) => {
+    uploadMultiple(req, res, async (err) => {
+
+        try {
+
+            if (err) {
+                throw err;
+            }
+
+
+            let images = req.files;
+            let data = req.body;
+            console.log(data);
+
+            const project = await modelwardAnnoucement.create({
+                ...data,
+                images: [],
+            })
+
+            for (let i = 0; i < images.length; i++) {
+                const imgPath = `${__dirname}/../uploads/${images[i].filename}`;
+                const imgCompressFolder = `${__dirname}/../uploads/compressed/`
+                const imgCompressedPath = `${imgCompressFolder}${images[i].filename}`
+                //compressing image
+                await compress({
+                    source: imgPath,
+                    destination: imgCompressFolder,
+                    enginesSetup: {
+                        jpg: { engine: 'mozjpeg', command: ['-quality', '20'] },
+                        png: { engine: 'pngquant', command: ['--quality=20-50', '-o'] },
+                    }
+                });
+                //resize
+                fs.writeFileSync(imgCompressedPath, await sharp(imgCompressedPath).resize({ width: 300 }).toBuffer())
+                //saveToDb
+                const img = await modelImage.create({
+                    data: fs.readFileSync(imgPath),
+                    compressedData: fs.readFileSync(imgCompressedPath),
+                    contentType: images[i].mimetype,
+                    size: images[i].size,
+                })
+                project.images.push(img._id);
+                await project.save();
+
+            }
+            return res.status(200).json({ message: 'ok' })
+        } catch (err) {
+            console.log(err);
+            if (err.msg) {
+                return res.status(500).json({ message: err.msg })
+            }
+            return res.status(500).json({ message: "something went wrong" })
+        }
+
+    });
+})
+
+authenticationRouter.post('/addPanchayathAnnouncement', auth, filterUser, async (req, res) => {
     uploadMultiple(req, res, async (err) => {
 
         try {
@@ -788,6 +860,23 @@ authenticationRouter.get('/getInstitutesByWard/:id', auth, async (req, res) => {
     }
 })
 
+authenticationRouter.get('/getInstitutesByPanchayathId/:id', auth, async (req, res) => {
+
+    const { id } = req.params;
+
+    try {
+        if (id === 'undefined') {
+            throw new Error('id is not defined')
+        }
+        const institutes = await modelwardInstitutes.find({ panchayathOId: id },{title:1,_id:1,catogery:1,wardOId:1,panchayathOId:1}).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
+        return res.status(200).json({ message: 'ok', institutes: institutes });
+
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ message: "something went wrong" })
+    }
+})
+
 authenticationRouter.get('/getWardInstitutesById/:id', auth, async (req, res) => {
 
     const { id } = req.params;
@@ -855,6 +944,27 @@ authenticationRouter.get('/getProjectByWard/:id', auth, filterUser, async (req, 
 
 
 })
+
+authenticationRouter.get('/getProjectByPanchayath/:id', auth, filterUser, async (req, res) => {
+    const { id } = req.params;
+    const {wardOId} = req.query;
+
+    try {
+        if (id === 'undefined') {
+            throw new Error('id is not defined')
+        }
+        const projects = await modelWardProject.find({$and:[{wardOId:new RegExp(`^${wardOId}`)},{panchayathOId:id},{isPanchayathProject:'true'}]}).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
+        return res.status(200).json({ message: 'ok', projects: projects })
+
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ message: "something went wrong" })
+    }
+
+
+})
+
+
 authenticationRouter.get('/getAnnouncementsByWard/:id', auth, filterUser, async (req, res) => {
     const { id } = req.params;
     try {
@@ -862,6 +972,23 @@ authenticationRouter.get('/getAnnouncementsByWard/:id', auth, filterUser, async 
             throw new Error('id is not defined')
         }
         const announcements = await modelwardAnnoucement.find({ wardOId: id }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
+        return res.status(200).json({ message: 'ok', announcements: announcements })
+
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ message: "something went wrong" })
+    }
+
+
+})
+
+authenticationRouter.get('/getAnnouncementsByPanchayath/:id', auth, filterUser, async (req, res) => {
+    const { id } = req.params;
+    try {
+        if (id === 'undefined') {
+            throw new Error('id is not defined')
+        }
+        const announcements = await modelwardAnnoucement.find({ panchayathOId: id ,wardOId:'NOT'}).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
         return res.status(200).json({ message: 'ok', announcements: announcements })
 
     } catch (err) {
@@ -887,6 +1014,18 @@ authenticationRouter.get('/getGramSabhaByWard/:id', auth, filterUser, async (req
     }
 
 
+})
+
+authenticationRouter.get('/getAllWardByPanchayathOId/:id', auth, async (req, res) => {
+    const { id } = req.params;
+    
+    try {
+        const ward = await modelWard.find({panchayathOId:id});
+        res.status(200).json({ message: 'ok', wards: ward })
+    } catch (err) {
+        console.log(err);
+        res.status(500).json({ message: 'something went wrong' })
+    }
 })
 
 module.exports = authenticationRouter;

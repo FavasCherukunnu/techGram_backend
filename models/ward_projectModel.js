@@ -9,6 +9,7 @@ const wardProject = new mongoose.Schema(
         panchayathOId:{type:String,required:true},
         startDate:{type:Date,required:true},
         endDate:{type:Date},
+        isPanchayathProject:{type:String,required:true,default:'false'},
         fundPassed:{type:String,required:true},
         description:{type:String,required:true},
         owner:{
