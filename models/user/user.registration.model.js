@@ -31,6 +31,7 @@ const userRegistration = new mongoose.Schema(
             contentType:String,
             size:String
         },
+        image1:{type:mongoose.SchemaTypes.ObjectId,ref:'image'},
         isApproved:{type:Boolean,required:false,default:false},
         isRejected:{type:Boolean,default:false},
         userType:{type:String,default:'user'}, //user or member 

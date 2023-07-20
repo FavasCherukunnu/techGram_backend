@@ -7,6 +7,7 @@ const postSchema = new mongoose.Schema(
         images:[{type:mongoose.SchemaTypes.ObjectId,ref:'image'}],
         wardOId:{type:String,required:true},
         panchayathOId:{type:String,required:true},
+        isGallaryPost:{type:Boolean,required:true,default:false},
         owner:{type:mongoose.SchemaTypes.ObjectId,ref:'registration',required:true}
     },
     {collection:'post',timestamps:true}

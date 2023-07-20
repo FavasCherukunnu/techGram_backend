@@ -6,39 +6,19 @@ const path = require('path')
 const storageProfiles = multer.diskStorage(
     {
         destination: (req, file, cb) => {
-            cb(null, 'uploads/profile')
+            cb(null, 'uploads')
         },
-        filename: async (req, file, cd) => {
+        filename: (req, file, cb) => {
 
-            var dat = JSON.parse(req.body.data1)
-            // const file = req.file;
-            delete dat.dataTimeNow
-            dat.dob = new Date(`${dat.dob.year}-${dat.dob.month}-${dat.dob.day}`);
-            // dat.dateTimeNow = new Date();
-
-            // console.log(dat);
-
-            dat.image = ''
-            dat.password = await bcrypt.hash(dat.password, 10);      //encrypting password
-
-            try{
-                const user = await modelUserRegistration.create({
-                    ...dat,
-                });
-                req.userId = user._id;
-                cd(null, `${user._id}-${Date.now()}-${file.originalname}`)  
-            }catch(err){
-                let err1 = new Error(err)
-                if (err.code === 11000) {
-                    err1.code =11000
-                }
-                cd(err1)
+            const allowedFileTypes = ["image/jpeg", "image/jpg", "image/png"];
+            if (allowedFileTypes.includes(file.mimetype)) {
+                const extension = file.mimetype.substring(file.mimetype.indexOf('/') + 1)
+                cb(null, `${Date.now()}-${file.originalname}.${extension}`)
+            } else {
+                let err1 = new Error('err')
+                err1.msg = `unSupported format ${file.mimetype}`
+                cb(err1);
             }
-
-            // const token = jwt.sign({ email: user.email, id: user._id }, SECRET_KEY);
-            // res.status(201).json({ user: user1, token: token, message: 'ok' });        //201 created record
-
-
         }
 
     }

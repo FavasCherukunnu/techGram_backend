@@ -58,7 +58,7 @@ const storageMultiple = multer.diskStorage(
             const allowedFileTypes = ["image/jpeg", "image/jpg", "image/png"];
             if (allowedFileTypes.includes(file.mimetype)) {
                 const extension = file.mimetype.substring(file.mimetype.indexOf('/') + 1)
-                cb(null, `${Date.now()}-${file.fieldname}.${extension}`)
+                cb(null, `${Date.now()}-${file.originalname}.${extension}`)
             } else {
                 let err1 = new Error('err')
                 err1.msg = `unSupported format ${file.mimetype}`
@@ -83,7 +83,54 @@ authenticationRouter.post('/dev/register', (req, res) => {
 
 
     uploadToFolder(req, res, async (err) => {
-        if (err) {
+
+        try {
+            if (err) {
+                throw err;
+            }
+            let images = req.file;
+            var dat = JSON.parse(req.body.data1)
+            delete dat.dataTimeNow;
+            const imgPath = `${__dirname}/../uploads/${images.filename}`;
+            const imgCompressFolder = `${__dirname}/../uploads/compressed/`
+            const imgCompressedPath = `${imgCompressFolder}${images.filename}`
+            //compressing image
+            await compress({
+                source: imgPath,
+                destination: imgCompressFolder,
+                enginesSetup: {
+                    jpg: { engine: 'mozjpeg', command: ['-quality', '20'] },
+                    png: { engine: 'pngquant', command: ['--quality=20-50', '-o'] },
+                }
+            });
+            //resize
+            fs.writeFileSync(imgCompressedPath, await sharp(imgCompressedPath).resize({ width: 300 }).toBuffer())
+            const img = await modelImage.create({
+                data: fs.readFileSync(imgPath),
+                compressedData: fs.readFileSync(imgCompressedPath),
+                contentType: images.mimetype,
+                size: images.size,
+            })
+
+            dat.dob = new Date(`${dat.dob.year}-${dat.dob.month}-${dat.dob.day}`);
+
+            dat.image = ''
+            dat.password = await bcrypt.hash(dat.password, 10);
+
+            const user = await modelUserRegistration.create({
+                ...dat,
+                image1: img._id,
+            });
+            console.log('image saved');
+
+            let user1 = { ...user._doc }
+            delete user1.image;
+            delete user1.password;
+
+            const token = jwt.sign({ email: user.email, id: user._id }, SECRET_KEY);
+            res.status(201).json({ user: user1, token: token, message: 'ok' });
+
+        } catch (err) {
             console.log(err);
             if (err.code === 11000) {
                 return res.status(409).json({ message: 'already registered' })
@@ -91,9 +138,74 @@ authenticationRouter.post('/dev/register', (req, res) => {
             return res.status(500).json({ message: 'something went wrong' })
         }
 
-        const user = await modelUserRegistration.findByIdAndUpdate(req.userId, { image: req.file.filename })
-        res.status(200).json({ message: 'ok' });
     });
+
+})
+
+authenticationRouter.post('dev/editUser', auth, async (req, res) => {
+
+    uploadToFolder(req, res, async (err) => {
+        try {
+            if (err) {
+                throw err;
+            }
+            let images = req.file;
+            var dat = JSON.parse(req.body.data1)
+            delete dat.dataTimeNow;
+            const id = dat._id;
+            const user = await modelUserRegistration.findById(id);
+
+            const isValid = await bcrypt.compare(dat.password, user.password);
+            if (!isValid) {
+                return res.status(400).json({ message: 'invalid credential' })     //400- bad request
+            }
+
+            if (dat.image !== '' && Object.keys(dat.image).length !== 0) {
+                delete dat.password;
+                const imgPath = `${__dirname}/../uploads/${images.filename}`;
+                const imgCompressFolder = `${__dirname}/../uploads/compressed/`
+                const imgCompressedPath = `${imgCompressFolder}${images.filename}`
+                //compressing image
+                await compress({
+                    source: imgPath,
+                    destination: imgCompressFolder,
+                    enginesSetup: {
+                        jpg: { engine: 'mozjpeg', command: ['-quality', '20'] },
+                        png: { engine: 'pngquant', command: ['--quality=20-50', '-o'] },
+                    }
+                });
+                //resize
+                fs.writeFileSync(imgCompressedPath, await sharp(imgCompressedPath).resize({ width: 300 }).toBuffer())
+                const img = await modelImage.updateOne({ _id: dat.image1 }, {
+                    data: fs.readFileSync(imgPath),
+                    compressedData: fs.readFileSync(imgCompressedPath),
+                    contentType: images.mimetype,
+                    size: images.size,
+                })
+                await user.updateOne({
+                    ...dat,
+                    image1: img._id
+                }, { runValidators: true });
+
+            } else {
+                delete dat.image;
+                delete dat.password;
+                await user.updateOne({
+                    ...dat
+                }, { runValidators: true });
+            }
+            return res.status(201).json({ message: 'ok' });         //201 created record
+
+
+
+        } catch (err) {
+            console.log(err);
+            if (err.code === 11000) {
+                return res.status(409).json({ message: 'already registered' })
+            }
+            res.status(500).json({ message: 'something went wrong' })
+        }
+    })
 
 })
 
@@ -485,11 +597,11 @@ authenticationRouter.post('/deleteWard', auth, filterUser, async (req, res) => {
 
 authenticationRouter.get('/getUsersUnApproved/:id', auth, filterUser, async (req, res) => {
     const { id } = req.params;
-    const { isRejected, isApproved ,key} = req.query;
+    const { isRejected, isApproved, key } = req.query;
     try {
 
 
-        const users = await modelUserRegistration.find({ $and: [{ wardOId: id }, { $where: `/${isApproved}.*/.test(this.isApproved)` }, { $where: `/${isRejected}.*/.test(this.isRejected)` },{fullName:new RegExp(key)}] }, { image: 0, password: 0 });
+        const users = await modelUserRegistration.find({ $and: [{ wardOId: id }, { $where: `/${isApproved}.*/.test(this.isApproved)` }, { $where: `/${isRejected}.*/.test(this.isRejected)` }, { fullName: new RegExp(key) }] }, { image: 0, password: 0 });
         return res.status(200).json({ message: 'ok', users: users, });
 
 
@@ -512,13 +624,11 @@ authenticationRouter.post('/wardInfoPost', auth, async (req, res) => {
                 throw err;
             }
             let images = req.files;
-            let { description, owner, wardOId, panchayathOId } = req.body;
-            const post = await modelPost.create({
-                description: description,
-                owner: owner,
-                wardOId: wardOId,
-                panchayathOId: panchayathOId
-            })
+            let dat = { ...req.body };
+            delete dat.images;
+            const post = await modelPost.create(
+                dat
+            )
 
             for (let i = 0; i < images.length; i++) {
                 const imgPath = `${__dirname}/../uploads/${images[i].filename}`;
@@ -568,13 +678,9 @@ authenticationRouter.post('/panchayathInfoPost', auth, async (req, res) => {
                 throw err;
             }
             let images = req.files;
-            let { description, owner, wardOId, panchayathOId } = req.body;
-            const post = await modelPost.create({
-                description: description,
-                owner: owner,
-                wardOId: 'NOT',
-                panchayathOId: panchayathOId
-            })
+            let dat = { ...req.body };
+            delete dat.images;
+            const post = await modelPost.create(dat)
 
             for (let i = 0; i < images.length; i++) {
                 const imgPath = `${__dirname}/../uploads/${images[i].filename}`;
@@ -831,7 +937,7 @@ authenticationRouter.post('/addWardInstitutes', auth, async (req, res) => {
     try {
         let data = req.body.data;
         let institute = await modelwardInstitutes.create(
-            {...data}
+            { ...data }
         )
         return res.status(200).json({ message: 'ok' });
     } catch (err) {
@@ -851,7 +957,7 @@ authenticationRouter.get('/getInstitutesByWard/:id', auth, async (req, res) => {
         if (id === 'undefined') {
             throw new Error('id is not defined')
         }
-        const institutes = await modelwardInstitutes.find({ wardOId: id },{title:1,_id:1,catogery:1}).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
+        const institutes = await modelwardInstitutes.find({ wardOId: id }, { title: 1, _id: 1, catogery: 1 }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
         return res.status(200).json({ message: 'ok', institutes: institutes });
 
     } catch (err) {
@@ -868,7 +974,7 @@ authenticationRouter.get('/getInstitutesByPanchayathId/:id', auth, async (req, r
         if (id === 'undefined') {
             throw new Error('id is not defined')
         }
-        const institutes = await modelwardInstitutes.find({ panchayathOId: id },{title:1,_id:1,catogery:1,wardOId:1,panchayathOId:1}).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
+        const institutes = await modelwardInstitutes.find({ panchayathOId: id }, { title: 1, _id: 1, catogery: 1, wardOId: 1, panchayathOId: 1 }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
         return res.status(200).json({ message: 'ok', institutes: institutes });
 
     } catch (err) {
@@ -900,7 +1006,12 @@ authenticationRouter.get('/getPostsByWard/:id', auth, async (req, res) => {
         if (id === 'undefined') {
             throw new Error('id is not defined')
         }
-        const post = await modelPost.find({ wardOId: id }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
+        const post = await modelPost.find({
+            $and: [
+                { wardOId: id },
+                { isGallaryPost: false }
+            ]
+        }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
         return res.status(200).json({ message: 'ok', posts: post })
 
     } catch (err) {
@@ -917,7 +1028,91 @@ authenticationRouter.get('/getPostsByPanchayath/:id', auth, async (req, res) => 
         if (id === 'undefined') {
             throw new Error('id is not defined')
         }
-        const post = await modelPost.find({$and:[{wardOId:'NOT'},{panchayathOId:id}]}).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
+        const post = await modelPost.find({ $and: [{ wardOId: 'NOT' }, { panchayathOId: id }, { isGallaryPost: false }] }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
+        return res.status(200).json({ message: 'ok', posts: post })
+
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ message: "something went wrong" })
+    }
+
+
+})
+
+authenticationRouter.get('/getGallaryPostsByWardAndPanchayath', auth, async (req, res) => {
+    const { wardOId, panchayathOId } = req.query;
+    try {
+        if (panchayathOId === 'undefined') {
+            throw new Error('id is not defined')
+        }
+        const post = await modelPost.find(
+            {
+                $or: [
+                    {
+                        $and: [
+                            { wardOId: 'NOT' },
+                            { panchayathOId: panchayathOId },
+                            { isGallaryPost: true }
+                        ]
+                    },
+                    {
+                        $and: [
+                            { wardOId: wardOId },
+                            { panchayathOId: panchayathOId },
+                            { isGallaryPost: true }
+                        ]
+                    }
+                ]
+            }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
+        return res.status(200).json({ message: 'ok', posts: post })
+
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ message: "something went wrong" })
+    }
+
+
+})
+
+authenticationRouter.get('/getGallaryPostsByWard', auth, async (req, res) => {
+    const { wardOId, panchayathOId } = req.query;
+    try {
+        if (panchayathOId === 'undefined') {
+            throw new Error('id is not defined')
+        }
+        const post = await modelPost.find(
+            {
+                $and: [
+                    { wardOId: wardOId },
+                    { isGallaryPost: true }
+                ]
+
+            }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
+        return res.status(200).json({ message: 'ok', posts: post })
+
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ message: "something went wrong" })
+    }
+
+
+})
+
+authenticationRouter.get('/getGallaryPostsByPanchayath', auth, async (req, res) => {
+    const { wardOId, panchayathOId } = req.query;
+    try {
+        if (panchayathOId === 'undefined') {
+            throw new Error('id is not defined')
+        }
+        const post = await modelPost.find(
+            {
+                $and: [
+                    { wardOId: 'NOT' },
+                    { panchayathOId: panchayathOId },
+                    { isGallaryPost: true }
+                ]
+
+            }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
         return res.status(200).json({ message: 'ok', posts: post })
 
     } catch (err) {
@@ -947,13 +1142,13 @@ authenticationRouter.get('/getProjectByWard/:id', auth, filterUser, async (req, 
 
 authenticationRouter.get('/getProjectByPanchayath/:id', auth, filterUser, async (req, res) => {
     const { id } = req.params;
-    const {wardOId} = req.query;
+    const { wardOId } = req.query;
 
     try {
         if (id === 'undefined') {
             throw new Error('id is not defined')
         }
-        const projects = await modelWardProject.find({$and:[{wardOId:new RegExp(`^${wardOId}`)},{panchayathOId:id},{isPanchayathProject:'true'}]}).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
+        const projects = await modelWardProject.find({ $and: [{ wardOId: new RegExp(`^${wardOId}`) }, { panchayathOId: id }, { isPanchayathProject: 'true' }] }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
         return res.status(200).json({ message: 'ok', projects: projects })
 
     } catch (err) {
@@ -988,7 +1183,7 @@ authenticationRouter.get('/getAnnouncementsByPanchayath/:id', auth, filterUser, 
         if (id === 'undefined') {
             throw new Error('id is not defined')
         }
-        const announcements = await modelwardAnnoucement.find({ panchayathOId: id ,wardOId:'NOT'}).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
+        const announcements = await modelwardAnnoucement.find({ panchayathOId: id, wardOId: 'NOT' }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
         return res.status(200).json({ message: 'ok', announcements: announcements })
 
     } catch (err) {
@@ -1018,14 +1213,27 @@ authenticationRouter.get('/getGramSabhaByWard/:id', auth, filterUser, async (req
 
 authenticationRouter.get('/getAllWardByPanchayathOId/:id', auth, async (req, res) => {
     const { id } = req.params;
-    
+
     try {
-        const ward = await modelWard.find({panchayathOId:id});
+        const ward = await modelWard.find({ panchayathOId: id });
         res.status(200).json({ message: 'ok', wards: ward })
     } catch (err) {
         console.log(err);
         res.status(500).json({ message: 'something went wrong' })
     }
 })
+
+authenticationRouter.get('/getAllPanchayath', auth, async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        const panchayath = await modelPanchayath.find().sort({ title: 1 });
+        res.status(200).json({ message: 'ok', panchayaths: panchayath })
+    } catch (err) {
+        console.log(err);
+        res.status(500).json({ message: 'something went wrong' })
+    }
+})
+
 
 module.exports = authenticationRouter;
