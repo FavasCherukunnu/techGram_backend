@@ -18,6 +18,9 @@ const modelwardAnnoucement = require('../models/ward_announcementModel');
 const modelwardGramSabha = require('../models/ward_GramSasbhaModel');
 const modelwardInstitutes = require('../models/ward_Institute');
 const modelPanchayath = require('../models/panchayath_model');
+const modelwardComplaint = require('../models/modelWardComplaints');
+const modeldiscussionReplay = require('../models/discussion_replay_model');
+const { default: mongoose } = require('mongoose');
 const SECRET_KEY = 'techGram123';
 
 const authenticationRouter = express.Router();
@@ -669,6 +672,68 @@ authenticationRouter.post('/wardInfoPost', auth, async (req, res) => {
 
 })
 
+authenticationRouter.post('/likeDiscussionPost', auth, async (req, res) => {
+    try {
+        const { postId, userId } = req.body.data;
+        console.log(req.body.data)
+        const dat = await modelPost.findById(postId);
+        dat.likes.push(userId);
+        await dat.save();
+        dat.setLiked = userId;
+        return res.status(200).json({ message: 'ok', likes: dat.likesCount, isLiked: dat.isLiked })
+
+    } catch (err) {
+        console.log(err);
+        if (err.msg) {
+            return res.status(500).json({ message: err.msg })
+        }
+        return res.status(500).json({ message: "something went wrong" })
+    }
+})
+
+authenticationRouter.post('/DislikeDiscussionPost', auth, async (req, res) => {
+    try {
+        const { postId, userId } = req.body.data;
+        console.log(postId);
+        const dat = await modelPost.findByIdAndUpdate(postId, {
+            $pullAll: {
+                likes: [userId]
+            }
+        }, { new: true });
+        await dat.save();
+        dat.setLiked = userId;
+        return res.status(200).json({ message: 'ok', likes: dat.likesCount, isLiked: dat.isLiked })
+
+    } catch (err) {
+        console.log(err);
+        if (err.msg) {
+            return res.status(500).json({ message: err.msg })
+        }
+        return res.status(500).json({ message: "something went wrong" })
+    }
+})
+
+authenticationRouter.post('/addDiscussionReplay', auth, async (req, res) => {
+
+    try {
+
+        const replay = await modeldiscussionReplay.create({
+            ...req.body.data
+        });
+        await replay.save();
+
+        return res.status(200).json({ message: 'ok' })
+    } catch (err) {
+        console.log(err);
+        if (err.msg) {
+            return res.status(500).json({ message: err.msg })
+        }
+        return res.status(500).json({ message: "something went wrong" })
+    }
+
+
+})
+
 authenticationRouter.post('/panchayathInfoPost', auth, async (req, res) => {
 
     uploadMultiple(req, res, async (err) => {
@@ -903,6 +968,63 @@ authenticationRouter.post('/addPanchayathAnnouncement', auth, filterUser, async 
     });
 })
 
+authenticationRouter.post('/addWardComplaint', auth, filterUser, async (req, res) => {
+    uploadMultiple(req, res, async (err) => {
+
+        try {
+
+            if (err) {
+                throw err;
+            }
+
+
+            let images = req.files;
+            let data = req.body;
+            console.log(data);
+
+            const complaint = await modelwardComplaint.create({
+                ...data,
+                images: [],
+            })
+
+            for (let i = 0; i < images.length; i++) {
+                const imgPath = `${__dirname}/../uploads/${images[i].filename}`;
+                const imgCompressFolder = `${__dirname}/../uploads/compressed/`
+                const imgCompressedPath = `${imgCompressFolder}${images[i].filename}`
+                //compressing image
+                await compress({
+                    source: imgPath,
+                    destination: imgCompressFolder,
+                    enginesSetup: {
+                        jpg: { engine: 'mozjpeg', command: ['-quality', '20'] },
+                        png: { engine: 'pngquant', command: ['--quality=20-50', '-o'] },
+                    }
+                });
+                //resize
+                fs.writeFileSync(imgCompressedPath, await sharp(imgCompressedPath).resize({ width: 300 }).toBuffer())
+                //saveToDb
+                const img = await modelImage.create({
+                    data: fs.readFileSync(imgPath),
+                    compressedData: fs.readFileSync(imgCompressedPath),
+                    contentType: images[i].mimetype,
+                    size: images[i].size,
+                })
+                complaint.images.push(img._id);
+                await complaint.save();
+
+            }
+            return res.status(200).json({ message: 'ok' })
+        } catch (err) {
+            console.log(err);
+            if (err.msg) {
+                return res.status(500).json({ message: err.msg })
+            }
+            return res.status(500).json({ message: "something went wrong" })
+        }
+
+    });
+})
+
 authenticationRouter.post('/addWardGramSabha', auth, async (req, res) => {
 
 
@@ -1011,7 +1133,13 @@ authenticationRouter.get('/getPostsByWard/:id', auth, async (req, res) => {
                 { wardOId: id },
                 { isGallaryPost: false }
             ]
-        }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
+        },).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
+        console.log('post.isLiked');
+        post.forEach(
+            (pos) => {
+                pos.setLiked = req.userId;
+            }
+        )
         return res.status(200).json({ message: 'ok', posts: post })
 
     } catch (err) {
@@ -1064,6 +1192,11 @@ authenticationRouter.get('/getGallaryPostsByWardAndPanchayath', auth, async (req
                     }
                 ]
             }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
+        post.forEach(
+            (pos) => {
+                pos.setLiked = req.userId;
+            }
+        )
         return res.status(200).json({ message: 'ok', posts: post })
 
     } catch (err) {
@@ -1088,6 +1221,11 @@ authenticationRouter.get('/getGallaryPostsByWard', auth, async (req, res) => {
                 ]
 
             }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
+        post.forEach(
+            (pos) => {
+                pos.setLiked = req.userId;
+            }
+        )
         return res.status(200).json({ message: 'ok', posts: post })
 
     } catch (err) {
@@ -1113,6 +1251,11 @@ authenticationRouter.get('/getGallaryPostsByPanchayath', auth, async (req, res) 
                 ]
 
             }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
+        post.forEach(
+            (pos) => {
+                pos.setLiked = req.userId;
+            }
+        )
         return res.status(200).json({ message: 'ok', posts: post })
 
     } catch (err) {
@@ -1177,6 +1320,23 @@ authenticationRouter.get('/getAnnouncementsByWard/:id', auth, filterUser, async 
 
 })
 
+authenticationRouter.get('/getComplaintsByWard/:id', auth, filterUser, async (req, res) => {
+    const { id } = req.params;
+    try {
+        if (id === 'undefined') {
+            throw new Error('id is not defined')
+        }
+        const announcements = await modelwardComplaint.find({ wardOId: id }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
+        return res.status(200).json({ message: 'ok', announcements: announcements })
+
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ message: "something went wrong" })
+    }
+
+
+})
+
 authenticationRouter.get('/getAnnouncementsByPanchayath/:id', auth, filterUser, async (req, res) => {
     const { id } = req.params;
     try {
@@ -1217,6 +1377,18 @@ authenticationRouter.get('/getAllWardByPanchayathOId/:id', auth, async (req, res
     try {
         const ward = await modelWard.find({ panchayathOId: id });
         res.status(200).json({ message: 'ok', wards: ward })
+    } catch (err) {
+        console.log(err);
+        res.status(500).json({ message: 'something went wrong' })
+    }
+})
+
+authenticationRouter.get('/getDiscussionReplayById/:id', auth, async (req, res) => {
+    const { id } = req.params;
+    const objectId = mongoose.Types.ObjectId;
+    try {
+        const replays = await modeldiscussionReplay.find({ chatId: new objectId(id) }).populate('owner', { fullName: 1 });
+        res.status(200).json({ message: 'ok', replays: replays })
     } catch (err) {
         console.log(err);
         res.status(500).json({ message: 'something went wrong' })
