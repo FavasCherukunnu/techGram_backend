@@ -1451,7 +1451,33 @@ authenticationRouter.get('/getAllWardByPanchayathOId/:id', auth, async (req, res
     const { id } = req.params;
 
     try {
-        const ward = await modelWard.find({ panchayathOId: id });
+        const ward = await modelWard.aggregate(
+            [
+            {$match:{panchayathOId:id}},
+            {$lookup:{
+                    from:'wardProject',
+                    localField:'id',
+                    foreignField:'wardOId',
+                    as:'projects',
+                    pipeline:[
+                        {$unwind:{path:'$rating',preserveNullAndEmptyArrays:true}},
+                        {$group:{
+                    _id:'$_id',
+                    averageRating:{$avg:'$rating.rating'}
+                }},
+                {$project:{averageRating:{$ifNull:['$averageRating',0]}}}
+                    ]
+                }},
+                {$unwind:{path:'$projects',preserveNullAndEmptyArrays:true}},
+                {$group:{
+                _id:'$_id',
+                        doc:{"$first":"$$ROOT"},
+                averageRating:{$avg:'$projects.averageRating'}
+            }},
+                {"$replaceRoot":{"newRoot":{$mergeObjects:['$doc',{'averageRating':'$averageRating'}]}}},
+                { $sort : { averageRating:-1 } }		
+            ]
+        );
         res.status(200).json({ message: 'ok', wards: ward })
     } catch (err) {
         console.log(err);
