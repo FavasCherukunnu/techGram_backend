@@ -854,6 +854,37 @@ authenticationRouter.post('/addWardProject', auth, filterUser, async (req, res) 
     });
 })
 
+authenticationRouter.post('/addProjectRatingUser/:id', auth, filterUser, async (req, res) => {
+    try {
+        const objectId = mongoose.Types.ObjectId;
+        const { id } = req.params;
+        await modelWardProject.updateOne(
+            { _id: new objectId(id) },
+            {
+                $pull: {
+                    rating: {
+                        owner:new objectId(req.body.data.owner)
+                    }
+                }
+            });
+        const project = await modelWardProject.updateOne(
+            { _id: new objectId(id) },
+            {
+                $push: {
+                    rating: req.body.data
+                }
+            },
+            { new: true });
+        return res.status(200).json({ message: 'ok' })
+    } catch (err) {
+        console.log(err);
+        if (err.msg) {
+            return res.status(500).json({ message: err.msg })
+        }
+        return res.status(500).json({ message: "something went wrong" })
+    }
+})
+
 authenticationRouter.post('/addWardAnnouncement', auth, filterUser, async (req, res) => {
     uploadMultiple(req, res, async (err) => {
 
@@ -1157,6 +1188,11 @@ authenticationRouter.get('/getPostsByPanchayath/:id', auth, async (req, res) => 
             throw new Error('id is not defined')
         }
         const post = await modelPost.find({ $and: [{ wardOId: 'NOT' }, { panchayathOId: id }, { isGallaryPost: false }] }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
+        post.forEach(
+            (pos) => {
+                pos.setLiked = req.userId;
+            }
+        )
         return res.status(200).json({ message: 'ok', posts: post })
 
     } catch (err) {
@@ -1272,8 +1308,48 @@ authenticationRouter.get('/getProjectByWard/:id', auth, filterUser, async (req, 
         if (id === 'undefined') {
             throw new Error('id is not defined')
         }
-        const projects = await modelWardProject.find({ wardOId: id }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
+        const projects = await modelWardProject.aggregate(
+            [
+            {$match:{wardOId:id}},
+                {$unwind:{path:'$rating',preserveNullAndEmptyArrays:true}},
+                {$group:{
+                    _id:'$_id',
+                    doc:{"$first":"$$ROOT"},
+                    averageRating:{$avg:'$rating.rating'}
+                }},
+                {"$replaceRoot":{"newRoot":{$mergeObjects:['$doc',{'averageRating':'$averageRating'}]}}},
+                {'$unset':'rating'},
+                {$lookup:{
+                    from:'registration',
+                    localField:'owner',
+                    foreignField: "_id",
+                    as:'owner',
+                    pipeline:[{ "$project": { "fullName": 1}}]
+                }},
+                {$unwind:'$owner'},
+                { $sort : { createdAt : -1 } }
+                
+            ]
+        );
+        // const projects = await modelWardProject.find({ wardOId: id }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
         return res.status(200).json({ message: 'ok', projects: projects })
+
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ message: "something went wrong" })
+    }
+
+
+})
+
+authenticationRouter.get('/wardProjectReviewById/:id', auth, filterUser, async (req, res) => {
+    const { id } = req.params;
+    try {
+        if (id === 'undefined') {
+            throw new Error('id is not defined')
+        }
+        const reviews = await modelWardProject.findById(id,{rating:1}).populate('rating.owner', { fullName: 1 });
+        return res.status(200).json({ message: 'ok', reviews: reviews })
 
     } catch (err) {
         console.log(err);
