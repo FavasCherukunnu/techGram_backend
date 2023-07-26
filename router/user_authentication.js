@@ -863,7 +863,7 @@ authenticationRouter.post('/addProjectRatingUser/:id', auth, filterUser, async (
             {
                 $pull: {
                     rating: {
-                        owner:new objectId(req.body.data.owner)
+                        owner: new objectId(req.body.data.owner)
                     }
                 }
             });
@@ -875,7 +875,17 @@ authenticationRouter.post('/addProjectRatingUser/:id', auth, filterUser, async (
                 }
             },
             { new: true });
-        return res.status(200).json({ message: 'ok' })
+        const newProject = await modelWardProject.aggregate([
+            {$match:{_id:new objectId(id)}},
+            { $unwind: { path: '$rating', preserveNullAndEmptyArrays: true } },
+            {
+                $group: {
+                    _id: '$_id',
+                    averageRating: { $avg: '$rating.rating' }
+                }
+            },
+        ])
+        return res.status(200).json({ message: 'ok',project:newProject })
     } catch (err) {
         console.log(err);
         if (err.msg) {
@@ -1054,6 +1064,34 @@ authenticationRouter.post('/addWardComplaint', auth, filterUser, async (req, res
         }
 
     });
+})
+
+authenticationRouter.post('/closeComplaint/:id', auth, async (req, res) => {
+    try {
+        const {id} = req.params;
+        const dbres = await modelwardComplaint.findById(id);
+        if(dbres.owner.toString() === req.userId){
+           await dbres.updateOne({
+                $set:{
+                    isSolved:'true',
+                    solvedDate:new Date()
+                }
+            },{new:true});
+        }else{
+            console.log('complaint owner is not matching');
+            const err = new Error('You Can not Change this');
+            err.msg = 'you can not change this'
+            throw err;
+        }
+        const newres = await modelwardComplaint.findById(id).populate('owner',{fullName:1});;
+        return res.status(200).json({ message: 'ok',complaint:newres })
+    } catch (err) {
+        console.log(err);
+        if (err.msg) {
+            return res.status(500).json({ message: err.msg })
+        }
+        return res.status(500).json({ message: "something went wrong" })
+    }
 })
 
 authenticationRouter.post('/addWardGramSabha', auth, async (req, res) => {
@@ -1310,25 +1348,29 @@ authenticationRouter.get('/getProjectByWard/:id', auth, filterUser, async (req, 
         }
         const projects = await modelWardProject.aggregate(
             [
-            {$match:{wardOId:id}},
-                {$unwind:{path:'$rating',preserveNullAndEmptyArrays:true}},
-                {$group:{
-                    _id:'$_id',
-                    doc:{"$first":"$$ROOT"},
-                    averageRating:{$avg:'$rating.rating'}
-                }},
-                {"$replaceRoot":{"newRoot":{$mergeObjects:['$doc',{'averageRating':'$averageRating'}]}}},
-                {'$unset':'rating'},
-                {$lookup:{
-                    from:'registration',
-                    localField:'owner',
-                    foreignField: "_id",
-                    as:'owner',
-                    pipeline:[{ "$project": { "fullName": 1}}]
-                }},
-                {$unwind:'$owner'},
-                { $sort : { createdAt : -1 } }
-                
+                { $match: { wardOId: id } },
+                { $unwind: { path: '$rating', preserveNullAndEmptyArrays: true } },
+                {
+                    $group: {
+                        _id: '$_id',
+                        doc: { "$first": "$$ROOT" },
+                        averageRating: { $avg: '$rating.rating' }
+                    }
+                },
+                { "$replaceRoot": { "newRoot": { $mergeObjects: ['$doc', { 'averageRating': '$averageRating' }] } } },
+                { '$unset': 'rating' },
+                {
+                    $lookup: {
+                        from: 'registration',
+                        localField: 'owner',
+                        foreignField: "_id",
+                        as: 'owner',
+                        pipeline: [{ "$project": { "fullName": 1 } }]
+                    }
+                },
+                { $unwind: '$owner' },
+                { $sort: { createdAt: -1 } }
+
             ]
         );
         // const projects = await modelWardProject.find({ wardOId: id }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
@@ -1348,7 +1390,7 @@ authenticationRouter.get('/wardProjectReviewById/:id', auth, filterUser, async (
         if (id === 'undefined') {
             throw new Error('id is not defined')
         }
-        const reviews = await modelWardProject.findById(id,{rating:1}).populate('rating.owner', { fullName: 1 });
+        const reviews = await modelWardProject.findById(id, { rating: 1 }).populate('rating.owner', { fullName: 1 });
         return res.status(200).json({ message: 'ok', reviews: reviews })
 
     } catch (err) {
@@ -1453,29 +1495,36 @@ authenticationRouter.get('/getAllWardByPanchayathOId/:id', auth, async (req, res
     try {
         const ward = await modelWard.aggregate(
             [
-            {$match:{panchayathOId:id}},
-            {$lookup:{
-                    from:'wardProject',
-                    localField:'id',
-                    foreignField:'wardOId',
-                    as:'projects',
-                    pipeline:[
-                        {$unwind:{path:'$rating',preserveNullAndEmptyArrays:true}},
-                        {$group:{
-                    _id:'$_id',
-                    averageRating:{$avg:'$rating.rating'}
-                }},
-                {$project:{averageRating:{$ifNull:['$averageRating',0]}}}
-                    ]
-                }},
-                {$unwind:{path:'$projects',preserveNullAndEmptyArrays:true}},
-                {$group:{
-                _id:'$_id',
-                        doc:{"$first":"$$ROOT"},
-                averageRating:{$avg:'$projects.averageRating'}
-            }},
-                {"$replaceRoot":{"newRoot":{$mergeObjects:['$doc',{'averageRating':'$averageRating'}]}}},
-                { $sort : { averageRating:-1 } }		
+                { $match: { panchayathOId: id } },
+                {
+                    $lookup: {
+                        from: 'wardProject',
+                        localField: 'id',
+                        foreignField: 'wardOId',
+                        as: 'projects',
+                        pipeline: [
+                            { $unwind: { path: '$rating', preserveNullAndEmptyArrays: true } },
+                            {
+                                $group:
+                                {
+                                    _id: '$_id',
+                                    averageRating: { $avg: '$rating.rating' }
+                                }
+                            },
+                            { $project: { averageRating: { $ifNull: ['$averageRating', 0] } } }
+                        ]
+                    }
+                },
+                { $unwind: { path: '$projects', preserveNullAndEmptyArrays: true } },
+                {
+                    $group: {
+                        _id: '$_id',
+                        doc: { "$first": "$$ROOT" },
+                        averageRating: { $avg: '$projects.averageRating' }
+                    }
+                },
+                { "$replaceRoot": { "newRoot": { $mergeObjects: ['$doc', { 'averageRating': '$averageRating' }] } } },
+                { $sort: { averageRating: -1 } }
             ]
         );
         res.status(200).json({ message: 'ok', wards: ward })
@@ -1502,6 +1551,68 @@ authenticationRouter.get('/getAllPanchayath', auth, async (req, res) => {
 
     try {
         const panchayath = await modelPanchayath.find().sort({ title: 1 });
+        res.status(200).json({ message: 'ok', panchayaths: panchayath })
+    } catch (err) {
+        console.log(err);
+        res.status(500).json({ message: 'something went wrong' })
+    }
+})
+
+authenticationRouter.get('/getAllPanchayathSorted', auth, async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        const panchayath = await modelPanchayath.aggregate([
+            {
+                $lookup: {
+                    from: 'ward',
+                    localField: 'id',
+                    foreignField: "panchayathOId",
+                    as: 'wards',
+                    pipeline: [
+                        { $project: { id: 1 } },
+                        {
+                            $lookup: {
+                                from: 'wardProject',
+                                localField: 'id',
+                                foreignField: 'wardOId',
+                                as: 'projects',
+                                pipeline: [
+                                    { $unwind: { path: '$rating', preserveNullAndEmptyArrays: true } },
+                                    {
+                                        $group:
+                                        {
+                                            _id: '$_id',
+                                            averageRating: { $avg: '$rating.rating' }
+                                        }
+                                    },
+                                    { $project: { averageRating: { $ifNull: ['$averageRating', 0] } } }
+                                ]
+                            }
+                        },
+                        { $unwind: { path: '$projects', preserveNullAndEmptyArrays: true } },
+                        {
+                            $group: {
+                                _id: '$_id',
+                                averageRating: { $avg: '$projects.averageRating' }
+                            }
+                        },
+                        { $project: { averageRating: { $ifNull: ['$averageRating', 0] } } }
+                    ]
+                }
+            },
+            { $unwind: { path: '$wards', preserveNullAndEmptyArrays: true } },
+            {
+                $group: {
+                    _id: '$_id',
+                    doc: { "$first": "$$ROOT" },
+                    averageRating: { $avg: '$wards.averageRating' }
+                }
+            },
+            { "$replaceRoot": { "newRoot": { $mergeObjects: ['$doc', { 'averageRating': '$averageRating' }] } } },
+            { $project: { wards: 0 } },
+            { $sort: { averageRating: -1 } }
+        ]);
         res.status(200).json({ message: 'ok', panchayaths: panchayath })
     } catch (err) {
         console.log(err);

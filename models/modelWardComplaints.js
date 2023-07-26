@@ -9,6 +9,7 @@ const wardComplaint = new mongoose.Schema(
         panchayathOId:{type:String,required:true},
         description:{type:String,required:true},
         isSolved:{type:String,required:true,default:false},
+        solvedDate:{type:Date},
         owner:{
             type:mongoose.SchemaTypes.ObjectId,
             ref:'registration',
