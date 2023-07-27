@@ -1409,7 +1409,41 @@ authenticationRouter.get('/getProjectByPanchayath/:id', auth, filterUser, async 
         if (id === 'undefined') {
             throw new Error('id is not defined')
         }
-        const projects = await modelWardProject.find({ $and: [{ wardOId: new RegExp(`^${wardOId}`) }, { panchayathOId: id }, { isPanchayathProject: 'true' }] }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
+        // const projects = await modelWardProject.find({ $and: [{ wardOId: new RegExp(`^${wardOId}`) }, { panchayathOId: id }, { isPanchayathProject: 'true' }] }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
+        const projects = await modelWardProject.aggregate(
+            [
+                {
+                    $match: {
+                        $and: [
+                            { panchayathOId: id },
+                            { isPanchayathProject: 'true' }
+                        ]
+                    }
+                },
+                { $unwind: { path: '$rating', preserveNullAndEmptyArrays: true } },
+                {
+                    $group: {
+                        _id: '$_id',
+                        doc: { "$first": "$$ROOT" },
+                        averageRating: { $avg: '$rating.rating' }
+                    }
+                },
+                { "$replaceRoot": { "newRoot": { $mergeObjects: ['$doc', { 'averageRating': '$averageRating' }] } } },
+                { '$unset': 'rating' },
+                {
+                    $lookup: {
+                        from: 'registration',
+                        localField: 'owner',
+                        foreignField: "_id",
+                        as: 'owner',
+                        pipeline: [{ "$project": { "fullName": 1 } }]
+                    }
+                },
+                { $unwind: '$owner' },
+                { $sort: { createdAt: -1 } }
+
+            ]
+        );
         return res.status(200).json({ message: 'ok', projects: projects })
 
     } catch (err) {
@@ -1428,6 +1462,7 @@ authenticationRouter.get('/getAnnouncementsByWard/:id', auth, filterUser, async 
             throw new Error('id is not defined')
         }
         const announcements = await modelwardAnnoucement.find({ wardOId: id }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
+
         return res.status(200).json({ message: 'ok', announcements: announcements })
 
     } catch (err) {
@@ -1460,6 +1495,42 @@ authenticationRouter.get('/getComplaintsByWard/:id', auth, filterUser, async (re
                 break;
             case 3:
                 announcements = await modelwardComplaint.find({ wardOId: id, isSolved: 'true' }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 })
+                break;
+            default:
+                break;
+        }
+        return res.status(200).json({ message: 'ok', announcements: announcements })
+
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ message: "something went wrong" })
+    }
+
+
+})
+
+authenticationRouter.get('/getComplaintsByPanchayath/:id', auth, filterUser, async (req, res) => {
+    const { id } = req.params;
+    const listValue = Number(req.query.listValue);
+    console.log(listValue);
+    try {
+        if (id === 'undefined') {
+            throw new Error('id is not defined')
+        }
+        let announcements
+        switch (listValue) {
+            case -1:
+
+                announcements = await modelwardComplaint.find({ $and: [{ panchayathOId: id }, { wardOId: 'NOT' }] }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
+                break;
+            case 1:
+                announcements = await modelwardComplaint.find({ $and: [{ panchayathOId: id }, { wardOId: 'NOT' }, { owner: req.userId }] }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 })
+                break
+            case 2:
+                announcements = await modelwardComplaint.find({ $and: [{ panchayathOId: id }, { wardOId: 'NOT' }, { isSolved: 'false' }] }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 })
+                break;
+            case 3:
+                announcements = await modelwardComplaint.find({ $and: [{ panchayathOId: id }, { wardOId: 'NOT' }, { isSolved: 'true' }] }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 })
                 break;
             default:
                 break;
@@ -1510,42 +1581,105 @@ authenticationRouter.get('/getGramSabhaByWard/:id', auth, filterUser, async (req
 
 authenticationRouter.get('/getAllWardByPanchayathOId/:id', auth, async (req, res) => {
     const { id } = req.params;
-
+    const { key } = req.query;
+    console.log(`lsdjlfs ${key}`);
     try {
-        const ward = await modelWard.aggregate(
-            [
-                { $match: { panchayathOId: id } },
-                {
-                    $lookup: {
-                        from: 'wardProject',
-                        localField: 'id',
-                        foreignField: 'wardOId',
-                        as: 'projects',
-                        pipeline: [
-                            { $unwind: { path: '$rating', preserveNullAndEmptyArrays: true } },
-                            {
-                                $group:
-                                {
-                                    _id: '$_id',
-                                    averageRating: { $avg: '$rating.rating' }
-                                }
-                            },
-                            { $project: { averageRating: { $ifNull: ['$averageRating', 0] } } }
-                        ]
-                    }
-                },
-                { $unwind: { path: '$projects', preserveNullAndEmptyArrays: true } },
-                {
-                    $group: {
-                        _id: '$_id',
-                        doc: { "$first": "$$ROOT" },
-                        averageRating: { $avg: '$projects.averageRating' }
-                    }
-                },
-                { "$replaceRoot": { "newRoot": { $mergeObjects: ['$doc', { 'averageRating': '$averageRating' }] } } },
-                { $sort: { averageRating: -1 } }
-            ]
-        );
+        let ward;
+        switch (key) {
+            case '1':
+                ward = await modelWard.aggregate(
+                    [
+                        { $match: { panchayathOId: id } },
+                        {
+                            $lookup: {
+                                from: 'wardProject',
+                                localField: 'id',
+                                foreignField: 'wardOId',
+                                as: 'projects',
+                                pipeline: [
+                                    { $unwind: { path: '$rating' } },
+                                    {
+                                        $group:
+                                        {
+                                            _id: '$_id',
+                                            averageRating: { $avg: '$rating.rating' }
+                                        }
+                                    },
+                                    { $project: { averageRating: { $ifNull: ['$averageRating', 0] } } }
+                                ]
+                            }
+                        },
+                        { $unwind: { path: '$projects' } },
+                        {
+                            $group: {
+                                _id: '$_id',
+                                doc: { "$first": "$$ROOT" },
+                                averageRating: { $avg: '$projects.averageRating' }
+                            }
+                        },
+                        { "$replaceRoot": { "newRoot": { $mergeObjects: ['$doc', { 'averageRating': '$averageRating' }] } } },
+                        { $sort: { averageRating: -1 } }
+                    ]
+                );
+                break;
+
+            case '2':
+                ward = await modelWard.aggregate([
+                    { $match: { panchayathOId: id } },
+                    {
+                        $lookup: {
+                            from: 'wardComplaint',
+                            localField: 'id',
+                            foreignField: 'wardOId',
+                            as: 'uCount',
+                            pipeline: [
+                                { $project: { isSolved: 1 } },
+                                { $match: { isSolved: 'false' } },
+                            ]
+                        }
+                    },
+                    {
+                        $lookup: {
+                            from: 'wardComplaint',
+                            localField: 'id',
+                            foreignField: 'wardOId',
+                            as: 'count',
+                            pipeline: [
+                                { $project: { isSolved: 1 } },
+                                { $match: { isSolved: 'true' } },
+                            ]
+                        }
+                    },
+                    { $addFields: { unSolvedComplaints: { $size: '$uCount' } } },
+                    { $addFields: { solvedComplaints: { $size: '$count' } } },
+                    { $project: { uCount: 0, count: 0 } },
+                    {
+                        $addFields: {
+                            solveRate: {
+                                $divide: ['$solvedComplaints', {
+                                    $cond: [
+                                        { $eq: [{ $add: ['$unSolvedComplaints', '$solvedComplaints'] }, 0] },
+                                        1,
+                                        { $add: ['$unSolvedComplaints', '$solvedComplaints'] }
+                                    ]
+                                }]
+                            }
+                        }
+                    },
+                    {
+                        $match: {
+                            $or: [
+                                { unSolvedComplaints: { $gt: 0 } },
+                                { solvedComplaints: { $gt: 0 } }
+                            ]
+                        }
+                    },
+                    { $sort: { solveRate: -1 } }
+                ]);
+
+            default:
+                break;
+        }
         res.status(200).json({ message: 'ok', wards: ward })
     } catch (err) {
         console.log(err);
@@ -1579,59 +1713,102 @@ authenticationRouter.get('/getAllPanchayath', auth, async (req, res) => {
 
 authenticationRouter.get('/getAllPanchayathSorted', auth, async (req, res) => {
     const { id } = req.params;
-
+    const { key } = req.query;
+    let panchayath
     try {
-        const panchayath = await modelPanchayath.aggregate([
-            {
-                $lookup: {
-                    from: 'ward',
-                    localField: 'id',
-                    foreignField: "panchayathOId",
-                    as: 'wards',
-                    pipeline: [
-                        { $project: { id: 1 } },
-                        {
-                            $lookup: {
-                                from: 'wardProject',
-                                localField: 'id',
-                                foreignField: 'wardOId',
-                                as: 'projects',
-                                pipeline: [
-                                    { $unwind: { path: '$rating', preserveNullAndEmptyArrays: true } },
+        switch (key) {
+            case '1':
+                panchayath = await modelPanchayath.aggregate([
+                    {
+                        $lookup: {
+                            from: 'wardProject',
+                            localField: 'id',
+                            foreignField: "panchayathOId",
+                            as: 'projects',
+                            pipeline: [
+                                { $unwind: { path: '$rating' } },
+                                {
+                                    $group:
                                     {
-                                        $group:
-                                        {
-                                            _id: '$_id',
-                                            averageRating: { $avg: '$rating.rating' }
-                                        }
-                                    },
-                                    { $project: { averageRating: { $ifNull: ['$averageRating', 0] } } }
-                                ]
+                                        _id: '$_id',
+                                        averageRating: { $avg: '$rating.rating' }
+                                    }
+                                },
+                                { $project: { averageRating: { $ifNull: ['$averageRating', 0] } } },
+
+                            ]
+                        }
+                    },
+                    { $unwind: { path: '$projects' } },
+                    {
+                        $group: {
+                            _id: '$_id',
+                            doc: { "$first": "$$ROOT" },
+                            averageRating: { $avg: '$projects.averageRating' }
+                        }
+                    },
+                    { "$replaceRoot": { "newRoot": { $mergeObjects: ['$doc', { 'averageRating': '$averageRating' }] } } },
+                    { $sort: { averageRating: -1 } }
+                ]);
+                break;
+
+            case '2':
+                panchayath = await modelPanchayath.aggregate([
+                    {
+                        $lookup: {
+                            from: 'wardComplaint',
+                            localField: 'id',
+                            foreignField: 'panchayathOId',
+                            as: 'uCount',
+                            pipeline: [
+                                { $project: { isSolved: 1 } },
+                                { $match: { isSolved: 'false' } },
+                            ]
+                        }
+                    },
+                    {
+                        $lookup: {
+                            from: 'wardComplaint',
+                            localField: 'id',
+                            foreignField: 'panchayathOId',
+                            as: 'count',
+                            pipeline: [
+                                { $project: { isSolved: 1 } },
+                                { $match: { isSolved: 'true' } },
+                            ]
+                        }
+                    },
+                    { $addFields: { unSolvedComplaints: { $size: '$uCount' } } },
+                    { $addFields: { solvedComplaints: { $size: '$count' } } },
+                    { $project: { uCount: 0, count: 0 } },
+                    {
+                        $addFields: {
+                            solveRate: {
+                                $divide: ['$solvedComplaints', {
+                                    $cond: [
+                                        { $eq: [{ $add: ['$unSolvedComplaints', '$solvedComplaints'] }, 0] },
+                                        1,
+                                        { $add: ['$unSolvedComplaints', '$solvedComplaints'] }
+                                    ]
+                                }]
                             }
-                        },
-                        { $unwind: { path: '$projects', preserveNullAndEmptyArrays: true } },
-                        {
-                            $group: {
-                                _id: '$_id',
-                                averageRating: { $avg: '$projects.averageRating' }
-                            }
-                        },
-                        { $project: { averageRating: { $ifNull: ['$averageRating', 0] } } }
-                    ]
-                }
-            },
-            { $unwind: { path: '$wards', preserveNullAndEmptyArrays: true } },
-            {
-                $group: {
-                    _id: '$_id',
-                    doc: { "$first": "$$ROOT" },
-                    averageRating: { $avg: '$wards.averageRating' }
-                }
-            },
-            { "$replaceRoot": { "newRoot": { $mergeObjects: ['$doc', { 'averageRating': '$averageRating' }] } } },
-            { $project: { wards: 0 } },
-            { $sort: { averageRating: -1 } }
-        ]);
+                        }
+                    },
+                    {
+                        $match: {
+                            $or: [
+                                { unSolvedComplaints: { $gt: 0 } },
+                                { solvedComplaints: { $gt: 0 } }
+                            ]
+                        }
+                    },
+                    { $sort: { solveRate: -1 } }
+                ])
+
+            default:
+                break;
+        }
+
         res.status(200).json({ message: 'ok', panchayaths: panchayath })
     } catch (err) {
         console.log(err);
