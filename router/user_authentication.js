@@ -876,7 +876,7 @@ authenticationRouter.post('/addProjectRatingUser/:id', auth, filterUser, async (
             },
             { new: true });
         const newProject = await modelWardProject.aggregate([
-            {$match:{_id:new objectId(id)}},
+            { $match: { _id: new objectId(id) } },
             { $unwind: { path: '$rating', preserveNullAndEmptyArrays: true } },
             {
                 $group: {
@@ -885,7 +885,7 @@ authenticationRouter.post('/addProjectRatingUser/:id', auth, filterUser, async (
                 }
             },
         ])
-        return res.status(200).json({ message: 'ok',project:newProject })
+        return res.status(200).json({ message: 'ok', project: newProject })
     } catch (err) {
         console.log(err);
         if (err.msg) {
@@ -1068,23 +1068,23 @@ authenticationRouter.post('/addWardComplaint', auth, filterUser, async (req, res
 
 authenticationRouter.post('/closeComplaint/:id', auth, async (req, res) => {
     try {
-        const {id} = req.params;
+        const { id } = req.params;
         const dbres = await modelwardComplaint.findById(id);
-        if(dbres.owner.toString() === req.userId){
-           await dbres.updateOne({
-                $set:{
-                    isSolved:'true',
-                    solvedDate:new Date()
+        if (dbres.owner.toString() === req.userId) {
+            await dbres.updateOne({
+                $set: {
+                    isSolved: 'true',
+                    solvedDate: new Date()
                 }
-            },{new:true});
-        }else{
+            }, { new: true });
+        } else {
             console.log('complaint owner is not matching');
             const err = new Error('You Can not Change this');
             err.msg = 'you can not change this'
             throw err;
         }
-        const newres = await modelwardComplaint.findById(id).populate('owner',{fullName:1});;
-        return res.status(200).json({ message: 'ok',complaint:newres })
+        const newres = await modelwardComplaint.findById(id).populate('owner', { fullName: 1 });;
+        return res.status(200).json({ message: 'ok', complaint: newres })
     } catch (err) {
         console.log(err);
         if (err.msg) {
@@ -1440,11 +1440,30 @@ authenticationRouter.get('/getAnnouncementsByWard/:id', auth, filterUser, async 
 
 authenticationRouter.get('/getComplaintsByWard/:id', auth, filterUser, async (req, res) => {
     const { id } = req.params;
+    const listValue = Number(req.query.listValue);
+    console.log(listValue);
     try {
         if (id === 'undefined') {
             throw new Error('id is not defined')
         }
-        const announcements = await modelwardComplaint.find({ wardOId: id }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
+        let announcements
+        switch (listValue) {
+            case -1:
+
+                announcements = await modelwardComplaint.find({ wardOId: id }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 });
+                break;
+            case 1:
+                announcements = await modelwardComplaint.find({ wardOId: id, owner: req.userId }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 })
+                break
+            case 2:
+                announcements = await modelwardComplaint.find({ wardOId: id, isSolved: 'false' }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 })
+                break;
+            case 3:
+                announcements = await modelwardComplaint.find({ wardOId: id, isSolved: 'true' }).sort({ createdAt: -1 }).populate('owner', { fullName: 1 })
+                break;
+            default:
+                break;
+        }
         return res.status(200).json({ message: 'ok', announcements: announcements })
 
     } catch (err) {
