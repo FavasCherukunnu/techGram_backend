@@ -148,7 +148,7 @@ authenticationRouter.post('/dev/register', (req, res) => {
 authenticationRouter.post('/dev/editUser', auth, async (req, res) => {
 
     uploadToFolder(req, res, async (err) => {
-        
+
         try {
             if (err) {
                 throw err;
@@ -182,14 +182,14 @@ authenticationRouter.post('/dev/editUser', auth, async (req, res) => {
                 });
                 //resize
                 fs.writeFileSync(imgCompressedPath, await sharp(imgCompressedPath).resize({ width: 100 }).toBuffer())
-                
+
                 const img = await modelImage.findById(user.image1);
                 await img.updateOne({
                     data: fs.readFileSync(imgPath),
                     compressedData: fs.readFileSync(imgCompressedPath),
                     contentType: images.mimetype,
                     size: images.size,
-                },{runValidators:true})
+                }, { runValidators: true })
                 // const img = await modelImage.create({
                 //     data: fs.readFileSync(imgPath),
                 //     compressedData: fs.readFileSync(imgCompressedPath),
@@ -395,7 +395,7 @@ authenticationRouter.get('/getCompressedProfileImageById/:id', auth, async (req,
     console.log(id);
     try {
         const image = await modelUserRegistration.findById(id, { image1: 1 });
-        const image1 = await modelImage.findById(image.image1,{ data: 0 });
+        const image1 = await modelImage.findById(image.image1, { data: 0 });
         return res.status(200).json({ message: 'ok', image: image1 });
 
     } catch (err) {
@@ -546,8 +546,32 @@ authenticationRouter.get('/getWardBywardOId/:id', auth, filterUser, async (req, 
     var id = req.params.id;
     console.log(id);
     try {
-        const ward = await modelWard.findOne({ id: id }).populate('member', { fullName: 1, adharNo: 1, wardNo: 1,image1:1 });
-        return res.status(200).json({ message: 'ok', ward: ward })
+        const objectId = mongoose.Types.ObjectId;
+        const ward = await modelWard.aggregate([
+            { $match: { id: id} },
+            {
+                $lookup: {
+                    from: 'registration',
+                    localField: 'member',
+                    foreignField: "_id",
+                    as: 'member',
+                    pipeline: [
+                        { "$project": { "fullName": 1, 'adharNo': 1, 'wardNo': 1, 'image1': 1 } }
+                    ]
+                }
+            },
+            {
+                $lookup: {
+                    from: 'panchayath',
+                    localField: 'panchayathOId',
+                    foreignField: "id",
+                    as: 'panchayath',
+                }
+            },
+            { $unwind: '$panchayath' },
+            { $unwind: '$member' }
+        ]);
+        return res.status(200).json({ message: 'ok', ward: ward[0] })
     } catch (err) {
         console.log(err);
         return res.status(500).json({ message: "something went wrong" })
@@ -1510,7 +1534,7 @@ authenticationRouter.get('/getComplaintsByWard/:id', auth, filterUser, async (re
         if (id === 'undefined') {
             throw new Error('id is not defined')
         }
-        let announcements
+        let announcements=[]
         switch (listValue) {
             case -1:
 
