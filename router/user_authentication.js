@@ -107,13 +107,13 @@ authenticationRouter.post('/dev/register', (req, res) => {
                 }
             });
             //resize
-            fs.writeFileSync(imgCompressedPath, await sharp(imgCompressedPath).resize({ width: 300 }).toBuffer())
+            fs.writeFileSync(imgCompressedPath, await sharp(imgCompressedPath).resize({ width: 100 }).toBuffer())
             const img = await modelImage.create({
                 data: fs.readFileSync(imgPath),
                 compressedData: fs.readFileSync(imgCompressedPath),
                 contentType: images.mimetype,
                 size: images.size,
-            })
+            });
 
             dat.dob = new Date(`${dat.dob.year}-${dat.dob.month}-${dat.dob.day}`);
 
@@ -145,9 +145,10 @@ authenticationRouter.post('/dev/register', (req, res) => {
 
 })
 
-authenticationRouter.post('dev/editUser', auth, async (req, res) => {
+authenticationRouter.post('/dev/editUser', auth, async (req, res) => {
 
     uploadToFolder(req, res, async (err) => {
+        
         try {
             if (err) {
                 throw err;
@@ -156,7 +157,9 @@ authenticationRouter.post('dev/editUser', auth, async (req, res) => {
             var dat = JSON.parse(req.body.data1)
             delete dat.dataTimeNow;
             const id = dat._id;
+            dat.dob = new Date(`${dat.dob.year}-${dat.dob.month}-${dat.dob.day}`);
             const user = await modelUserRegistration.findById(id);
+
 
             const isValid = await bcrypt.compare(dat.password, user.password);
             if (!isValid) {
@@ -178,13 +181,21 @@ authenticationRouter.post('dev/editUser', auth, async (req, res) => {
                     }
                 });
                 //resize
-                fs.writeFileSync(imgCompressedPath, await sharp(imgCompressedPath).resize({ width: 300 }).toBuffer())
-                const img = await modelImage.updateOne({ _id: dat.image1 }, {
+                fs.writeFileSync(imgCompressedPath, await sharp(imgCompressedPath).resize({ width: 100 }).toBuffer())
+                
+                const img = await modelImage.findById(user.image1);
+                await img.updateOne({
                     data: fs.readFileSync(imgPath),
                     compressedData: fs.readFileSync(imgCompressedPath),
                     contentType: images.mimetype,
                     size: images.size,
-                })
+                },{runValidators:true})
+                // const img = await modelImage.create({
+                //     data: fs.readFileSync(imgPath),
+                //     compressedData: fs.readFileSync(imgCompressedPath),
+                //     contentType: images.mimetype,
+                //     size: images.size,
+                // })
                 await user.updateOne({
                     ...dat,
                     image1: img._id
@@ -366,8 +377,26 @@ authenticationRouter.get('/getProfileImageById/:id', auth, async (req, res) => {
     const { id } = req.params;
     console.log(id);
     try {
-        const image = await modelUserRegistration.findById(id, { image: 1 });
-        return res.status(200).json({ message: 'ok', image: image });
+        const image = await modelUserRegistration.findById(id, { image1: 1 });
+        const image1 = await modelImage.findById(image.image1);
+        return res.status(200).json({ message: 'ok', image: image1 });
+
+    } catch (err) {
+        console.log(err);
+        if (err.msg) {
+            return res.status(500).json({ message: err.msg })
+        }
+        return res.status(500).json({ message: "something went wrong" })
+    }
+})
+
+authenticationRouter.get('/getCompressedProfileImageById/:id', auth, async (req, res) => {
+    const { id } = req.params;
+    console.log(id);
+    try {
+        const image = await modelUserRegistration.findById(id, { image1: 1 });
+        const image1 = await modelImage.findById(image.image1,{ data: 0 });
+        return res.status(200).json({ message: 'ok', image: image1 });
 
     } catch (err) {
         console.log(err);
@@ -517,7 +546,7 @@ authenticationRouter.get('/getWardBywardOId/:id', auth, filterUser, async (req, 
     var id = req.params.id;
     console.log(id);
     try {
-        const ward = await modelWard.findOne({ id: id }).populate('member', { fullName: 1, adharNo: 1, wardNo: 1 });
+        const ward = await modelWard.findOne({ id: id }).populate('member', { fullName: 1, adharNo: 1, wardNo: 1,image1:1 });
         return res.status(200).json({ message: 'ok', ward: ward })
     } catch (err) {
         console.log(err);
