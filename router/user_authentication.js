@@ -592,6 +592,20 @@ authenticationRouter.get('/getPanchayathByPanchayathOId/:id', auth, async (req, 
     }
 })
 
+authenticationRouter.get('/getPanchayathById/:id', auth, async (req, res) => {
+    const { id } = req.params;
+    try {
+        let panchayath = await modelPanchayath.findById(id).populate("president", { image: 0, password: 0 });
+        if (!panchayath) {
+            throw Error('No such Panchayat')
+        }
+        return res.status(200).json({ message: 'ok', panchayath: panchayath })
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ message: "something went wrong" })
+    }
+})
+
 authenticationRouter.post('/updateWardById/:id', auth, filterUser, async (req, res) => {
     const { id } = req.params;
     const newWard = req.body.ward;
