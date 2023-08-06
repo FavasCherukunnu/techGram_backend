@@ -21,6 +21,7 @@ const modelPanchayath = require('../models/panchayath_model');
 const modelwardComplaint = require('../models/modelWardComplaints');
 const modeldiscussionReplay = require('../models/discussion_replay_model');
 const { default: mongoose } = require('mongoose');
+const { title } = require('process');
 const SECRET_KEY = 'techGram123';
 
 const authenticationRouter = express.Router();
@@ -548,7 +549,7 @@ authenticationRouter.get('/getWardBywardOId/:id', auth, filterUser, async (req, 
     try {
         const objectId = mongoose.Types.ObjectId;
         const ward = await modelWard.aggregate([
-            { $match: { id: id} },
+            { $match: { id: id } },
             {
                 $lookup: {
                     from: 'registration',
@@ -1548,7 +1549,7 @@ authenticationRouter.get('/getComplaintsByWard/:id', auth, filterUser, async (re
         if (id === 'undefined') {
             throw new Error('id is not defined')
         }
-        let announcements=[]
+        let announcements = []
         switch (listValue) {
             case -1:
 
@@ -1768,10 +1769,20 @@ authenticationRouter.get('/getDiscussionReplayById/:id', auth, async (req, res) 
 
 authenticationRouter.get('/getAllPanchayath', auth, async (req, res) => {
     const { id } = req.params;
-
-    try {
-        const panchayath = await modelPanchayath.find().sort({ title: 1 });
-        res.status(200).json({ message: 'ok', panchayaths: panchayath })
+    const {key}  = req.query;
+    console.log(req.params);
+    console.log(req.query);
+    try {  
+        const panchayath = await modelPanchayath.find(
+            {
+                '$or':
+                    [
+                        { title: { "$regex": `^${key}`, "$options": "i" } },
+                        { panchayath: { "$regex": `^${key}`, "$options": "i" } }
+                    ]
+            }
+        ).sort({ title: 1 });
+        res.status(200).json({ message: 'ok', panchayaths: panchayath, })
     } catch (err) {
         console.log(err);
         res.status(500).json({ message: 'something went wrong' })
@@ -1780,7 +1791,7 @@ authenticationRouter.get('/getAllPanchayath', auth, async (req, res) => {
 
 authenticationRouter.get('/getAllPanchayathSorted', auth, async (req, res) => {
     const { id } = req.params;
-    const { key } = req.query;
+    const { key ,searchString} = req.query;
     let panchayath
     try {
         switch (key) {
@@ -1815,7 +1826,12 @@ authenticationRouter.get('/getAllPanchayathSorted', auth, async (req, res) => {
                         }
                     },
                     { "$replaceRoot": { "newRoot": { $mergeObjects: ['$doc', { 'averageRating': '$averageRating' }] } } },
-                    { $sort: { averageRating: -1 } }
+                    { $sort: { averageRating: -1 } },
+                    {$match:{
+                        '$or':
+                            [{ title: { "$regex": `^${searchString}`, "$options": "i" } },
+                            { panchayath: { "$regex": `^${searchString}`, "$options": "i" } }]
+                    }}
                 ]);
                 break;
 
