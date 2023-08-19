@@ -310,6 +310,7 @@ authenticationRouter.post('/editUser', upload.single('image'), auth, async (req,
     }
 
 })
+
 authenticationRouter.post('/login', async (req, res) => {
 
     const { email, password } = req.body;
