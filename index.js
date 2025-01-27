@@ -37,6 +37,6 @@ app.use('/uploads/profile',express.static('./uploads/profile'))
 app.use('/user', authenticationRouter)
 app.use('/admin',adminAuthentication)
 app.get('/test', (req, res) => {
-    res.send('working')
+    res.send('working v1')
 })
 
