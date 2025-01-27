@@ -30,7 +30,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors({
     exposedHeaders:['x-auth-token'],
-    origin: '*'
+    origin: 'https://tech-gram.vercel.app'
 }));
 app.use('/uploads/profile',express.static('./uploads/profile'))
 
