@@ -11,13 +11,16 @@ const { auth } = require('./controllers/middlewares.js');
 const adminAuthentication = require('./router/admin_authentication.js');
 const SECRET_KEY = 'techGram123';
 const path = require('path')
-const PORT = 3002;
+require('dotenv').config();
+
+const PORT = process.env.PORT;
+const MONGOURI = process.env.MONGOURI;
 
 const app = express();
 
 
 
-mongoose.connect('mongodb://127.0.0.1:27017/techGram1').then(() => {
+mongoose.connect(MONGOURI).then(() => {
     console.log('connected to db');
     app.listen(PORT, () => { console.log('listening to port ' + PORT); })
 }).catch((err) => { console.log('error connecting to db', err); })
