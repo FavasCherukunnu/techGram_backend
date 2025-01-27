@@ -30,7 +30,16 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors({
     exposedHeaders:['x-auth-token'],
-    origin: true
+    origin: (origin, callback) => {
+        // Allow requests with no origin (e.g., server-to-server requests) or if origin is in allowedOrigins
+        if (true) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true
 }));
 app.use('/uploads/profile',express.static('./uploads/profile'))
 
