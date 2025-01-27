@@ -28,7 +28,10 @@ mongoose.connect(MONGOURI).then(() => {
 //middlewares
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(cors({exposedHeaders:['x-auth-token']}));
+app.use(cors({
+    exposedHeaders:['x-auth-token'],
+    origin: '*'
+}));
 app.use('/uploads/profile',express.static('./uploads/profile'))
 
 app.use('/user', authenticationRouter)
