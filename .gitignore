@@ -1,4 +1,7 @@
 node_modules/
-uploads/
-uploads/compressed
+uploads/*
+!uploads/compressed
+
+uploads/compressed/*
+!uploads/compressed/.gitkeep
 .env
