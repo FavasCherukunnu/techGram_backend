@@ -669,11 +669,20 @@ authenticationRouter.post('/deleteWard', auth, filterUser, async (req, res) => {
 
 authenticationRouter.get('/getUsersUnApproved/:id', auth, filterUser, async (req, res) => {
     const { id } = req.params;
-    const { isRejected, isApproved, key } = req.query;
+    const { isRejected=false, isApproved=false, key } = req.query;
+    const isrejected = isRejected === 'true'||isRejected==='True' ? true : false;
+    const isapproved = isApproved === 'true'||isApproved==='True' ? true : false;
     try {
 
 
-        const users = await modelUserRegistration.find({ $and: [{ wardOId: id }, { $where: `/${isApproved}.*/.test(this.isApproved)` }, { $where: `/${isRejected}.*/.test(this.isRejected)` }, { fullName: new RegExp(key) }] }, { image: 0, password: 0 });
+        const users = await modelUserRegistration.find({
+            $and: [
+                { wardOId: id },
+                { isApproved: isapproved }, // Assuming `isApproved` is a boolean
+                { isRejected: isrejected }, // Assuming `isRejected` is a boolean
+                { fullName: new RegExp(key) }
+            ]
+        }, { image: 0, password: 0 });
         return res.status(200).json({ message: 'ok', users: users, });
 
 
@@ -1770,10 +1779,10 @@ authenticationRouter.get('/getDiscussionReplayById/:id', auth, async (req, res) 
 
 authenticationRouter.get('/getAllPanchayath', auth, async (req, res) => {
     const { id } = req.params;
-    const {key}  = req.query;
+    const { key } = req.query;
     console.log(req.params);
     console.log(req.query);
-    try {  
+    try {
         const panchayath = await modelPanchayath.find(
             {
                 '$or':
@@ -1792,7 +1801,7 @@ authenticationRouter.get('/getAllPanchayath', auth, async (req, res) => {
 
 authenticationRouter.get('/getAllPanchayathSorted', auth, async (req, res) => {
     const { id } = req.params;
-    const { key ,searchString} = req.query;
+    const { key, searchString } = req.query;
     let panchayath
     try {
         switch (key) {
@@ -1828,11 +1837,13 @@ authenticationRouter.get('/getAllPanchayathSorted', auth, async (req, res) => {
                     },
                     { "$replaceRoot": { "newRoot": { $mergeObjects: ['$doc', { 'averageRating': '$averageRating' }] } } },
                     { $sort: { averageRating: -1 } },
-                    {$match:{
-                        '$or':
-                            [{ title: { "$regex": `^${searchString}`, "$options": "i" } },
-                            { panchayath: { "$regex": `^${searchString}`, "$options": "i" } }]
-                    }}
+                    {
+                        $match: {
+                            '$or':
+                                [{ title: { "$regex": `^${searchString}`, "$options": "i" } },
+                                { panchayath: { "$regex": `^${searchString}`, "$options": "i" } }]
+                        }
+                    }
                 ]);
                 break;
 
