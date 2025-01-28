@@ -519,7 +519,7 @@ authenticationRouter.get('/searchWard', auth, filterUser, async (req, res) => {
         const wards = await modelWard.find({
             $and: [
                 { panchayathOId: panchayathOId },
-                { $where: `/^${key}.*/.test(this.wardNo)` }
+                { wardNo: { $regex: `^${key}`, $options: 'i' } }
             ]
         }).sort({ wardNo: 1 }).populate('member', { fullName: 1 });
 
